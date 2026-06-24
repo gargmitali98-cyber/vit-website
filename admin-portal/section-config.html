@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Section Configuration — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.sc-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px}
+.sc-tab{padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .12s}
+.sc-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.q-item{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);transition:background .1s}
+.q-item:hover{background:var(--bg)}
+.q-body{flex:1}
+.q-text{font-size:13px;font-weight:500;margin-bottom:4px}
+.q-meta{font-size:11px;color:var(--text-muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.q-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.answer-type-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;background:var(--info-bg);color:var(--info)}
+.badge-mandatory{background:#fef3c7;color:#b45309;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px}
+.badge-optional{background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px}
+.badge-disabled{background:#fee2e2;color:#ef4444;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px}
+.reorder-btns{display:flex;flex-direction:column;gap:2px;flex-shrink:0}
+.reorder-btns button{width:24px;height:20px;font-size:10px;line-height:1;background:var(--bg);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-muted);display:flex;align-items:center;justify-content:center}
+.reorder-btns button:hover{background:var(--primary-light);border-color:var(--primary);color:var(--primary)}
+.q-order{font-size:12px;font-weight:600;color:var(--text-muted);min-width:20px;padding-top:2px}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Section Configuration</div>
+          <div class="page-subtitle">Manage questions for Personal Information, Lifestyle, Family History, and Insurance &amp; Claims sections</div>
+        </div>
+      </div>
+
+      <!-- Section tabs -->
+      <div class="sc-tabs">
+        <button class="sc-tab active" id="tab-personal"   onclick="switchSection('personal',this)">Personal Information</button>
+        <button class="sc-tab"        id="tab-lifestyle"  onclick="switchSection('lifestyle',this)">Lifestyle Factors</button>
+        <button class="sc-tab"        id="tab-family"     onclick="switchSection('family',this)">Family History</button>
+        <button class="sc-tab"        id="tab-claims"     onclick="switchSection('claims',this)">Insurance &amp; Claims</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title" id="sectionTitle">Personal Information Questions</span>
+          <button class="btn btn-sm btn-primary" onclick="openAddModal()">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Question
+          </button>
+        </div>
+        <div id="questionsList">
+          <div class="empty"><p>Loading…</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal-overlay" id="qModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">Add Question</span>
+      <button class="btn-ghost" onclick="closeModal('qModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-group">
+        <label>Question Text <span class="required">*</span></label>
+        <input class="input" type="text" id="qText" placeholder="e.g. Date of Birth">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Answer Type <span class="required">*</span></label>
+          <select class="select" id="qType" onchange="toggleOptions()">
+            <option value="TEXT">Text (free entry)</option>
+            <option value="NUMBER">Number</option>
+            <option value="YES_NO">Yes / No</option>
+            <option value="DATE">Date</option>
+            <option value="DROPDOWN">Dropdown (single select)</option>
+            <option value="MULTI_SELECT">Multi-select</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Required?</label>
+          <select class="select" id="qMandatory">
+            <option value="true">Mandatory</option>
+            <option value="false">Optional</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="optionsGroup" style="display:none">
+        <label>Options <span class="required">*</span></label>
+        <textarea class="textarea" id="qOptions" placeholder="Enter one option per line&#10;e.g.&#10;Option A&#10;Option B" rows="5"></textarea>
+        <div class="text-muted text-sm" style="margin-top:4px">One option per line</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('qModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveQuestion()">Save Question</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Section Configuration');
+
+const SECTION_LABELS = {
+  personal:  'Personal Information',
+  lifestyle: 'Lifestyle Factors',
+  family:    'Family History',
+  claims:    'Insurance & Claims History',
+};
+
+let currentSection = 'personal';
+let questions = [];
+
+// ── Tab switching ────────────────────────────────
+function switchSection(section, btn) {
+  currentSection = section;
+  document.querySelectorAll('.sc-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('sectionTitle').textContent = (SECTION_LABELS[section] || section) + ' Questions';
+  loadQuestions();
+}
+
+// ── Load questions ───────────────────────────────
+async function loadQuestions() {
+  document.getElementById('questionsList').innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  const r = await apiFetch('/admin/section-questions?section=' + currentSection);
+  questions = r.data || [];
+  renderQuestions();
+}
+
+// ── Render list ──────────────────────────────────
+function renderQuestions() {
+  const el = document.getElementById('questionsList');
+  if (!questions.length) {
+    el.innerHTML = '<div class="empty"><p>No questions yet</p><small>Click "Add Question" to configure questions for this section.</small></div>';
+    return;
+  }
+  el.innerHTML = questions.map((q, i) => `
+    <div class="q-item">
+      <div class="reorder-btns">
+        <button title="Move up"   onclick="moveQ('${q.id}', -1)">▲</button>
+        <button title="Move down" onclick="moveQ('${q.id}',  1)">▼</button>
+      </div>
+      <div class="q-order">${i + 1}.</div>
+      <div class="q-body">
+        <div class="q-text">${escHtml(q.text)}</div>
+        <div class="q-meta">
+          <span class="answer-type-badge">${(q.answerType || '').replace('_', ' ')}</span>
+          ${q.options && q.options.length ? `<span>${q.options.length} options</span>` : ''}
+          <span class="${q.isMandatory ? 'badge-mandatory' : 'badge-optional'}">${q.isMandatory ? 'Mandatory' : 'Optional'}</span>
+          ${!q.isActive ? '<span class="badge-disabled">Disabled</span>' : ''}
+        </div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-sm btn-secondary" onclick="openEditModal('${q.id}')">Edit</button>
+        <button class="btn btn-sm btn-secondary" onclick="toggleMandatory('${q.id}')">${q.isMandatory ? 'Make Optional' : 'Make Mandatory'}</button>
+        <button class="btn btn-sm btn-secondary" onclick="toggleActive('${q.id}')">${q.isActive ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-sm btn-danger"    onclick="deleteQuestion('${q.id}')">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Reorder ──────────────────────────────────────
+async function moveQ(id, dir) {
+  const idx = questions.findIndex(q => q.id === id);
+  if (idx < 0) return;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= questions.length) return;
+  [questions[idx], questions[newIdx]] = [questions[newIdx], questions[idx]];
+  const ids = questions.map(q => q.id);
+  await apiFetch('/admin/section-questions/reorder', { method: 'POST', body: { section: currentSection, ids } });
+  renderQuestions();
+}
+
+// ── Add modal ────────────────────────────────────
+function openAddModal() {
+  document.getElementById('editId').value = '';
+  document.getElementById('qText').value = '';
+  document.getElementById('qType').value = 'TEXT';
+  document.getElementById('qOptions').value = '';
+  document.getElementById('qMandatory').value = 'false';
+  document.getElementById('modalTitle').textContent = 'Add Question — ' + (SECTION_LABELS[currentSection] || currentSection);
+  toggleOptions();
+  openModal('qModal');
+}
+
+function openEditModal(id) {
+  const q = questions.find(x => x.id === id);
+  if (!q) return;
+  document.getElementById('editId').value = q.id;
+  document.getElementById('qText').value = q.text;
+  document.getElementById('qType').value = q.answerType || 'TEXT';
+  document.getElementById('qOptions').value = (q.options || []).join('\n');
+  document.getElementById('qMandatory').value = q.isMandatory ? 'true' : 'false';
+  document.getElementById('modalTitle').textContent = 'Edit Question';
+  toggleOptions();
+  openModal('qModal');
+}
+
+function toggleOptions() {
+  const t = document.getElementById('qType').value;
+  document.getElementById('optionsGroup').style.display = ['DROPDOWN', 'MULTI_SELECT'].includes(t) ? 'block' : 'none';
+}
+
+// ── Save ─────────────────────────────────────────
+async function saveQuestion() {
+  const id = document.getElementById('editId').value;
+  const type = document.getElementById('qType').value;
+  const optRaw = document.getElementById('qOptions').value;
+  const body = {
+    section: currentSection,
+    text: document.getElementById('qText').value.trim(),
+    answerType: type,
+    options: ['DROPDOWN', 'MULTI_SELECT'].includes(type)
+      ? optRaw.split('\n').map(s => s.trim()).filter(Boolean)
+      : [],
+    isMandatory: document.getElementById('qMandatory').value === 'true',
+  };
+  if (!body.text) { toast('Question text is required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const path   = id ? `/admin/section-questions/${id}` : '/admin/section-questions';
+  const r = await apiFetch(path, { method, body });
+  if (r.success) { toast('Saved', 'success'); closeModal('qModal'); loadQuestions(); }
+  else toast(r.error || 'Error saving question', 'error');
+}
+
+// ── Toggle mandatory ─────────────────────────────
+async function toggleMandatory(id) {
+  const r = await apiFetch(`/admin/section-questions/${id}/mandatory`, { method: 'PATCH', body: {} });
+  if (r.success) { toast('Updated', 'success'); loadQuestions(); }
+  else toast(r.error || 'Error', 'error');
+}
+
+// ── Toggle active ────────────────────────────────
+async function toggleActive(id) {
+  const r = await apiFetch(`/admin/section-questions/${id}/toggle`, { method: 'PATCH', body: {} });
+  if (r.success) { toast('Updated', 'success'); loadQuestions(); }
+  else toast(r.error || 'Error', 'error');
+}
+
+// ── Delete ───────────────────────────────────────
+async function deleteQuestion(id) {
+  if (!confirm('Delete this question? This cannot be undone.')) return;
+  const r = await apiFetch(`/admin/section-questions/${id}`, { method: 'DELETE' });
+  if (r.success) { toast('Deleted', 'success'); loadQuestions(); }
+  else toast(r.error || 'Error', 'error');
+}
+
+// Initial load
+loadQuestions();
+</script>
+</body>
+</html>

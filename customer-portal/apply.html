@@ -12,7 +12,7 @@
 <!-- Topbar -->
 <header class="topbar">
   <div class="topbar-brand">
-    <div class="brand-mark">D</div>
+    <img src="/public/daman-logo.webp" alt="Daman Health" class="brand-mark">
     <div>
       <div class="brand-name">Daman Health</div>
       <div class="brand-sub">Underwriting Application</div>
@@ -291,10 +291,97 @@ function resetNextBtn(label) {
 }
 
 // ─────────────────────────────────────────────────
-// SECTION 1 — PERSONAL INFORMATION
+// DYNAMIC SECTION QUESTION RENDERER
+// Fetches admin-configured questions from /api/section-questions
 // ─────────────────────────────────────────────────
-function renderPersonal() {
-  const pd = appData.personalDetails || {};
+async function fetchSectionQuestions(section) {
+  try {
+    const r = await fetch('/api/section-questions?section=' + section);
+    const data = await r.json();
+    return (data.data || []).filter(q => q.isActive);
+  } catch { return []; }
+}
+
+function buildFieldHtml(q, stored) {
+  const fieldId = 'sq_' + q.id;
+  const reqBadge = q.isMandatory ? ' <span class="req">*</span>' : '';
+  const labelHtml = '<label>' + escHtml(q.text) + reqBadge + '</label>';
+  const type = (q.answerType || 'TEXT').toUpperCase();
+  let inputHtml = '';
+  const storedVal = stored !== undefined ? stored : '';
+
+  if (type === 'YES_NO') {
+    inputHtml = '<div style="margin-top:4px">' + pillGroup('pg_' + fieldId, ['Yes', 'No'], storedVal) + '</div>';
+  } else if (type === 'DROPDOWN') {
+    const opts = (q.options || []).map(o => '<option value="' + escHtml(o) + '" ' + (storedVal === o ? 'selected' : '') + '>' + escHtml(o) + '</option>').join('');
+    inputHtml = '<select class="field" id="' + fieldId + '"><option value="">Select…</option>' + opts + '</select>';
+  } else if (type === 'MULTI_SELECT') {
+    inputHtml = '<div class="pill-group" id="' + fieldId + '_ms">' +
+      (q.options || []).map(function(o) {
+        const isSelected = Array.isArray(storedVal) ? storedVal.includes(o) : false;
+        return '<button type="button" class="pill' + (isSelected ? ' selected' : '') + '" onclick="this.classList.toggle(\'selected\')" data-val="' + escHtml(o) + '">' + escHtml(o) + '</button>';
+      }).join('') + '</div>';
+  } else if (type === 'NUMBER') {
+    inputHtml = '<input class="field" type="number" id="' + fieldId + '" placeholder="" value="' + escHtml(String(storedVal)) + '">';
+  } else if (type === 'DATE') {
+    inputHtml = '<input class="field" type="date" id="' + fieldId + '" value="' + escHtml(storedVal) + '">';
+  } else {
+    inputHtml = '<input class="field" type="text" id="' + fieldId + '" placeholder="" value="' + escHtml(storedVal) + '">';
+  }
+
+  return '<div class="form-group"><label>' + escHtml(q.text) + reqBadge + '</label>' + inputHtml + '</div>';
+}
+
+function collectSectionAnswers(questions) {
+  const body = {};
+  questions.forEach(function(q) {
+    const fieldId = 'sq_' + q.id;
+    const type = (q.answerType || 'TEXT').toUpperCase();
+    if (type === 'YES_NO') {
+      const sel = document.querySelector('#pg_' + fieldId + ' .pill.selected');
+      body[fieldId] = sel ? sel.textContent.trim() : '';
+    } else if (type === 'MULTI_SELECT') {
+      const selected = [];
+      document.querySelectorAll('#' + fieldId + '_ms .pill.selected').forEach(b => selected.push(b.dataset.val));
+      body[fieldId] = selected;
+    } else {
+      const el = document.getElementById(fieldId);
+      body[fieldId] = el ? el.value.trim() : '';
+    }
+  });
+  return body;
+}
+
+function validateSectionAnswers(questions, answers) {
+  const missing = [];
+  questions.forEach(function(q) {
+    if (!q.isMandatory) return;
+    const v = answers['sq_' + q.id];
+    if (!v || (Array.isArray(v) && !v.length)) missing.push(q.text);
+  });
+  return missing;
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 1 — PERSONAL INFORMATION (dynamic)
+// ─────────────────────────────────────────────────
+let _personalQuestions = null;
+
+async function renderPersonal() {
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128100; Step 1 of 8</div>' +
+    '<div class="section-title">Personal Information</div>' +
+    '<div class="section-desc">Tell us about yourself so we can personalise your underwriting assessment.</div>' +
+  '</div>' +
+  '<div class="card"><div class="card-body"><div class="text-muted text-sm">Loading questions…</div></div></div>';
+
+  const qs = await fetchSectionQuestions('personal');
+  _personalQuestions = qs;
+  const stored = appData.personalDetails || {};
+
+  const fieldsHtml = '<div class="form-grid">' + qs.map(q => buildFieldHtml(q, stored['sq_' + q.id])).join('') + '</div>';
+
   document.getElementById('mainContent').innerHTML =
   '<div class="section-header">' +
     '<div class="section-eyebrow">&#128100; Step 1 of 8</div>' +
@@ -302,53 +389,16 @@ function renderPersonal() {
     '<div class="section-desc">Tell us about yourself so we can personalise your underwriting assessment.</div>' +
   '</div>' +
   '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#128221;</span><div><div class="card-title">Basic Details</div><div class="card-desc">Full name and date of birth as on your passport or Emirates ID</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>First Name <span class="req">*</span></label><input class="field" type="text" id="firstName" placeholder="John" value="' + escHtml(pd.firstName||'') + '"></div>' +
-        '<div class="form-group"><label>Last Name <span class="req">*</span></label><input class="field" type="text" id="lastName" placeholder="Smith" value="' + escHtml(pd.lastName||'') + '"></div>' +
-        '<div class="form-group"><label>Date of Birth <span class="req">*</span></label><input class="field" type="date" id="dob" value="' + escHtml(pd.dob||'') + '"></div>' +
-        '<div class="form-group"><label>Gender <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('genderGroup', ['Male','Female','Other'], pd.gender) + '</div></div>' +
-        '<div class="form-group"><label>Nationality <span class="req">*</span></label><input class="field" type="text" id="nationality" placeholder="e.g. UAE, Indian, British" value="' + escHtml(pd.nationality||'') + '"></div>' +
-        '<div class="form-group"><label>Emirates ID / Passport No. <span class="req">*</span></label><input class="field" type="text" id="idNumber" placeholder="784-XXXX-XXXXXXX-X" value="' + escHtml(pd.idNumber||'') + '"></div>' +
-      '</div>' +
-    '</div>' +
-  '</div>' +
-  '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#128222;</span><div><div class="card-title">Contact Information</div><div class="card-desc">We\'ll send your decision and updates to these details</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>Email Address <span class="req">*</span></label><input class="field" type="email" id="email" placeholder="john@example.com" value="' + escHtml(pd.email||'') + '"></div>' +
-        '<div class="form-group"><label>Mobile Number <span class="req">*</span></label><input class="field" type="tel" id="phone" placeholder="+971 50 000 0000" value="' + escHtml(pd.phone||'') + '"></div>' +
-        '<div class="form-group full"><label>Residential Address <span class="req">*</span></label><input class="field" type="text" id="address" placeholder="Apartment, building, street" value="' + escHtml(pd.address||'') + '"></div>' +
-        '<div class="form-group"><label>Emirate / City <span class="req">*</span></label><input class="field" type="text" id="city" placeholder="Dubai" value="' + escHtml(pd.city||'') + '"></div>' +
-        '<div class="form-group"><label>Occupation <span class="req">*</span></label><input class="field" type="text" id="occupation" placeholder="e.g. Software Engineer" value="' + escHtml(pd.occupation||'') + '"></div>' +
-      '</div>' +
-    '</div>' +
+    '<div class="card-header"><span class="card-icon">&#128221;</span><div><div class="card-title">Your Details</div><div class="card-desc">As per your passport or Emirates ID</div></div></div>' +
+    '<div class="card-body">' + fieldsHtml + '</div>' +
   '</div>' +
   actionBar('savePersonal()', 'Save &amp; Continue', false);
 }
 
 async function savePersonal() {
-  const gender = getPill('genderGroup');
-  const body = {
-    firstName: val('firstName'), lastName: val('lastName'), dob: val('dob'),
-    gender, nationality: val('nationality'), idNumber: val('idNumber'),
-    email: val('email'), phone: val('phone'), address: val('address'),
-    city: val('city'), occupation: val('occupation'),
-  };
-  const missing = [];
-  if (!body.firstName) missing.push('First Name');
-  if (!body.lastName) missing.push('Last Name');
-  if (!body.dob) missing.push('Date of Birth');
-  if (!gender) missing.push('Gender');
-  if (!body.nationality) missing.push('Nationality');
-  if (!body.idNumber) missing.push('Emirates ID / Passport No.');
-  if (!body.email) missing.push('Email Address');
-  if (!body.phone) missing.push('Mobile Number');
-  if (!body.address) missing.push('Residential Address');
-  if (!body.city) missing.push('Emirate / City');
-  if (!body.occupation) missing.push('Occupation');
+  const qs = _personalQuestions || [];
+  const body = collectSectionAnswers(qs);
+  const missing = validateSectionAnswers(qs, body);
   if (missing.length) { toast('Missing: ' + missing.join(', '), 'error'); return; }
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -358,10 +408,51 @@ async function savePersonal() {
 }
 
 // ─────────────────────────────────────────────────
-// SECTION 2 — LIFESTYLE
+// SECTION 2 — LIFESTYLE (dynamic + BMI widget)
 // ─────────────────────────────────────────────────
-function renderLifestyle() {
-  const lf = appData.lifestyle || {};
+let _lifestyleQuestions = null;
+
+async function renderLifestyle() {
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#127939; Step 2 of 8</div>' +
+    '<div class="section-title">Lifestyle Factors</div>' +
+    '<div class="section-desc">Help us understand your daily habits and physical health. These factors influence your risk profile.</div>' +
+  '</div>' +
+  '<div class="card"><div class="card-body"><div class="text-muted text-sm">Loading questions…</div></div></div>';
+
+  const qs = await fetchSectionQuestions('lifestyle');
+  _lifestyleQuestions = qs;
+  const stored = appData.lifestyle || {};
+
+  // Find height/weight question IDs for BMI widget
+  const heightQ = qs.find(q => q.text.toLowerCase().includes('height'));
+  const weightQ = qs.find(q => q.text.toLowerCase().includes('weight'));
+  const hId = heightQ ? 'sq_' + heightQ.id : null;
+  const wId = weightQ ? 'sq_' + weightQ.id : null;
+
+  let fieldsHtml = '<div class="form-grid">';
+  qs.forEach(function(q) {
+    const fieldId = 'sq_' + q.id;
+    const isHeight = hId && fieldId === hId;
+    const isWeight = wId && fieldId === wId;
+    if (isHeight || isWeight) {
+      const reqBadge = q.isMandatory ? ' <span class="req">*</span>' : '';
+      fieldsHtml += '<div class="form-group"><label>' + escHtml(q.text) + reqBadge + '</label><input class="field" type="number" id="' + fieldId + '" placeholder="" value="' + escHtml(String(stored[fieldId]||'')) + '" oninput="updateBMI()"></div>';
+    } else {
+      fieldsHtml += buildFieldHtml(q, stored['sq_' + q.id]);
+    }
+  });
+  fieldsHtml += '</div>';
+
+  const bmiWidget = (hId && wId) ? (
+    '<div class="card" style="margin-top:16px">' +
+    '<div class="card-header"><span class="card-icon">&#9878;&#65039;</span><div><div class="card-title">BMI</div></div></div>' +
+    '<div class="card-body"><div class="form-grid-3">' +
+    '<div class="form-group"><label>BMI <span class="hint-text">(auto-calculated)</span></label><input class="field" id="bmi" readonly placeholder="—" value="' + escHtml(String(stored.bmi||'')) + '"></div>' +
+    '</div><div id="bmiCard"></div></div></div>'
+  ) : '';
+
   document.getElementById('mainContent').innerHTML =
   '<div class="section-header">' +
     '<div class="section-eyebrow">&#127939; Step 2 of 8</div>' +
@@ -369,37 +460,18 @@ function renderLifestyle() {
     '<div class="section-desc">Help us understand your daily habits and physical health. These factors influence your risk profile.</div>' +
   '</div>' +
   '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#128684;</span><div><div class="card-title">Tobacco &amp; Alcohol</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>Smoking Status <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('smokingGroup', ['Non-smoker','Ex-smoker','Current smoker'], lf.smokingStatus) + '</div></div>' +
-        '<div class="form-group"><label>Alcohol Consumption <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('alcoholGroup', ['None','Occasional','Moderate','Heavy'], lf.alcoholConsumption) + '</div></div>' +
-      '</div>' +
-    '</div>' +
+    '<div class="card-header"><span class="card-icon">&#128684;</span><div><div class="card-title">Lifestyle Information</div></div></div>' +
+    '<div class="card-body">' + fieldsHtml + '</div>' +
   '</div>' +
-  '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#9878;&#65039;</span><div><div class="card-title">Body Measurements</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid-3">' +
-        '<div class="form-group"><label>Height (cm) <span class="req">*</span></label><input class="field" type="number" id="height" min="100" max="250" placeholder="175" value="' + escHtml(String(lf.height||'')) + '" oninput="updateBMI()"></div>' +
-        '<div class="form-group"><label>Weight (kg) <span class="req">*</span></label><input class="field" type="number" id="weight" min="30" max="300" placeholder="75" value="' + escHtml(String(lf.weight||'')) + '" oninput="updateBMI()"></div>' +
-        '<div class="form-group"><label>BMI <span class="hint-text">(auto-calculated)</span></label><input class="field" id="bmi" readonly placeholder="—" value="' + escHtml(String(lf.bmi||'')) + '"></div>' +
-      '</div>' +
-      '<div id="bmiCard"></div>' +
-    '</div>' +
-  '</div>' +
-  '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#127947;</span><div><div class="card-title">Physical Activity &amp; Diet</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>Exercise Frequency <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('exerciseGroup', ['Sedentary','Light (1–2×/wk)','Moderate (3–4×/wk)','Active (5+/wk)'], lf.exerciseFrequency) + '</div></div>' +
-        '<div class="form-group"><label>Diet Quality <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('dietGroup', ['Poor','Average','Good','Excellent'], lf.dietQuality) + '</div></div>' +
-      '</div>' +
-    '</div>' +
-  '</div>' +
+  bmiWidget +
   actionBar('saveLifestyle()');
 
-  if (lf.height && lf.weight) updateBMI();
+  // Restore BMI if already set
+  if (hId && wId) {
+    const h = parseFloat(stored[hId]);
+    const w = parseFloat(stored[wId]);
+    if (h > 0 && w > 0) updateBMI();
+  }
 }
 
 function buildBmiCard(h, w) {
@@ -419,8 +491,13 @@ function buildBmiCard(h, w) {
 }
 
 function updateBMI() {
-  const h = parseFloat(document.getElementById('height') && document.getElementById('height').value);
-  const w = parseFloat(document.getElementById('weight') && document.getElementById('weight').value);
+  const qs = _lifestyleQuestions || [];
+  const heightQ = qs.find(q => q.text.toLowerCase().includes('height'));
+  const weightQ = qs.find(q => q.text.toLowerCase().includes('weight'));
+  const hEl = heightQ ? document.getElementById('sq_' + heightQ.id) : null;
+  const wEl = weightQ ? document.getElementById('sq_' + weightQ.id) : null;
+  const h = hEl ? parseFloat(hEl.value) : 0;
+  const w = wEl ? parseFloat(wEl.value) : 0;
   const bmiEl = document.getElementById('bmi');
   const card = document.getElementById('bmiCard');
   if (h > 0 && w > 0) {
@@ -434,19 +511,13 @@ function updateBMI() {
 }
 
 async function saveLifestyle() {
-  const smoking = getPill('smokingGroup'), alcohol = getPill('alcoholGroup');
-  const exercise = getPill('exerciseGroup'), diet = getPill('dietGroup');
-  const h = val('height'), w = val('weight');
-  const missingLf = [];
-  if (!smoking) missingLf.push('Smoking Status');
-  if (!alcohol) missingLf.push('Alcohol Consumption');
-  if (!h) missingLf.push('Height');
-  if (!w) missingLf.push('Weight');
-  if (!exercise) missingLf.push('Exercise Frequency');
-  if (!diet) missingLf.push('Diet Quality');
-  if (missingLf.length) { toast('Missing: ' + missingLf.join(', '), 'error'); return; }
-  const bmi = parseFloat((parseFloat(w) / Math.pow(parseFloat(h) / 100, 2)).toFixed(1));
-  const body = { smokingStatus: smoking, alcoholConsumption: alcohol, exerciseFrequency: exercise, dietQuality: diet, height: parseFloat(h), weight: parseFloat(w), bmi };
+  const qs = _lifestyleQuestions || [];
+  const body = collectSectionAnswers(qs);
+  const missing = validateSectionAnswers(qs, body);
+  if (missing.length) { toast('Missing: ' + missing.join(', '), 'error'); return; }
+  // Attach calculated BMI
+  const bmiEl = document.getElementById('bmi');
+  if (bmiEl && bmiEl.value) body.bmi = parseFloat(bmiEl.value);
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   const ok = await saveSection('lifestyle', body);
@@ -455,90 +526,148 @@ async function saveLifestyle() {
 }
 
 // ─────────────────────────────────────────────────
-// SECTION 3 — FAMILY HISTORY (with search)
+// SECTION 3 — FAMILY HISTORY (dynamic + search)
 // ─────────────────────────────────────────────────
-const FH_CONDITIONS = [
-  { key:'fhDiabetes',     label:'Diabetes',              sub:'Type 1 or Type 2',                  emoji:'🍬', detailKey:'fhDiabetesDetail',  detailPlaceholder:'Relation & age, e.g. Father, 48' },
-  { key:'fhHeartDisease', label:'Heart Disease',          sub:'Coronary artery / heart attack',    emoji:'❤️', detailKey:'fhHeartDetail',     detailPlaceholder:'Relation & age of onset, e.g. Father at 55' },
-  { key:'fhCancer',       label:'Cancer',                 sub:'Any type of malignancy',            emoji:'🎗️', detailKey:'fhCancerDetail',    detailPlaceholder:'Type & relation, e.g. Breast cancer, Mother' },
-  { key:'fhHypertension', label:'Hypertension',           sub:'High blood pressure',               emoji:'💉', detailKey:null },
-  { key:'fhStroke',       label:'Stroke / Neurological',  sub:'CVA, TIA, epilepsy',               emoji:'⚡', detailKey:null },
-  { key:'fhKidney',       label:'Kidney Disease',         sub:'Chronic kidney disease or failure', emoji:'🫘', detailKey:null },
-  { key:'fhMentalHealth', label:'Mental Health',          sub:'Depression, bipolar, schizophrenia',emoji:'🧠', detailKey:null },
-  { key:'fhRespiratory',  label:'Respiratory Disease',    sub:'Asthma, COPD, TB',                  emoji:'🫁', detailKey:null },
-  { key:'fhThyroid',      label:'Thyroid Disorder',       sub:'Hypothyroidism, hyperthyroidism',   emoji:'🔬', detailKey:null },
-  { key:'fhArthritis',    label:'Arthritis / Joint',      sub:'Rheumatoid, osteoarthritis',        emoji:'🦴', detailKey:null },
-  { key:'fhGastro',       label:'Gastrointestinal',       sub:'Crohn\'s, colitis, liver disease',  emoji:'🫙', detailKey:null },
-];
-
+let _familyQuestions = null;
 let fhSearchQuery = '';
 
-function renderFamily() {
-  const fh = appData.familyHistory || {};
+async function renderFamily() {
   document.getElementById('mainContent').innerHTML =
   '<div class="section-header">' +
     '<div class="section-eyebrow">&#128106; Step 3 of 8</div>' +
     '<div class="section-title">Family History</div>' +
-    '<div class="section-desc">Hereditary conditions can affect your underwriting outcome. Toggle any condition that applies to a first-degree relative.</div>' +
+    '<div class="section-desc">Hereditary conditions can affect your underwriting outcome.</div>' +
   '</div>' +
-  '<div class="alert alert-info"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> First-degree relatives only: parents, siblings, children.</div>' +
-  '<div class="card">' +
-    '<div class="card-body" style="padding-bottom:0">' +
-      '<div class="disease-search-wrap" style="margin-bottom:16px">' +
-        '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
-        '<input type="text" class="disease-search" id="fhSearch" placeholder="Search conditions, e.g. Diabetes, Heart…" oninput="filterFhList()">' +
-      '</div>' +
-    '</div>' +
-    '<div class="card-body" style="padding:0">' +
-      '<div class="toggle-card" id="fhToggleList">' +
-        renderFhToggleList(fh) +
-      '</div>' +
-    '</div>' +
-  '</div>' +
-  actionBar('saveFamily()');
+  '<div class="card"><div class="card-body"><div class="text-muted text-sm">Loading questions…</div></div></div>';
 
-  restoreFhState(fh);
+  const qs = await fetchSectionQuestions('family');
+  _familyQuestions = qs;
+  const stored = appData.familyHistory || {};
+
+  fhSearchQuery = '';
+  renderFamilyContent(qs, stored);
 }
 
-function renderFhToggleList(fh) {
-  const q = fhSearchQuery.toLowerCase();
-  return FH_CONDITIONS.filter(function(c) {
-    return !q || c.label.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q);
-  }).map(function(c) {
-    const detailHtml = c.detailKey ? (
-      '<div class="form-group" style="margin:0">' +
-        '<label style="font-size:11px;margin-bottom:4px">Relation &amp; details</label>' +
-        '<input class="field" type="text" id="' + c.detailKey + '" placeholder="' + escHtml(c.detailPlaceholder) + '" value="' + escHtml((fh && fh[c.detailKey])||'') + '">' +
-      '</div>') : '';
-    return toggleRowHtml(c.key, c.emoji + ' ' + c.label, c.sub, detailHtml);
-  }).join('') || '<div class="no-results">No conditions match your search.</div>';
+function renderFamilyContent(qs, stored) {
+  // Separate MULTI_SELECT (relative mapping) from other questions
+  const relativeQs = qs.filter(function(q) { return (q.answerType || '').toUpperCase() === 'MULTI_SELECT'; });
+  const otherQs    = qs.filter(function(q) { return (q.answerType || '').toUpperCase() !== 'MULTI_SELECT'; });
+
+  const filteredRel = relativeQs.filter(function(q) {
+    if (!fhSearchQuery) return true;
+    return q.text.toLowerCase().includes(fhSearchQuery.toLowerCase());
+  });
+  const filteredOther = otherQs.filter(function(q) {
+    if (!fhSearchQuery) return true;
+    return q.text.toLowerCase().includes(fhSearchQuery.toLowerCase());
+  });
+
+  // Table-style rows: condition name | Mother | Father | Sibling(s)
+  const RELATIVE_COLS = ['Mother', 'Father', 'Sibling(s)'];
+  const relTableRows = filteredRel.map(function(q) {
+    const fieldId = 'sq_' + q.id;
+    const storedVal = Array.isArray(stored[fieldId]) ? stored[fieldId] : [];
+    const hasAny = storedVal.some(function(v) { return RELATIVE_COLS.includes(v); });
+    const cells = RELATIVE_COLS.map(function(rel) {
+      const isSelected = storedVal.includes(rel);
+      const icon = rel === 'Mother' ? '&#128101;' : rel === 'Father' ? '&#128102;' : '&#128104;&#8205;&#128105;&#8205;&#128103;';
+      return '<td style="text-align:center;padding:10px 8px;border-left:1px solid var(--border)">' +
+        '<button type="button" data-val="' + escHtml(rel) + '" onclick="toggleRelative(\'' + fieldId + '_ms\',this)" style="width:38px;height:38px;border-radius:50%;border:2px solid ' + (isSelected ? 'var(--primary)' : 'var(--border)') + ';background:' + (isSelected ? 'var(--primary-light)' : '#fff') + ';cursor:pointer;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:all .12s" title="' + escHtml(rel) + '">' + icon + '</button>' +
+      '</td>';
+    }).join('');
+    return '<tr id="' + fieldId + '_ms" style="border-bottom:1px solid var(--border);background:' + (hasAny ? '#f0f9ff' : '#fff') + '">' +
+      '<td style="padding:12px 16px;font-size:13px;font-weight:' + (hasAny ? '700' : '500') + ';color:var(--text)">' + escHtml(q.text) + '</td>' +
+      cells +
+    '</tr>';
+  }).join('');
+
+  const relTable = filteredRel.length ? (
+    '<table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr style="border-bottom:2px solid var(--border);background:var(--bg)">' +
+        '<th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">Condition</th>' +
+        RELATIVE_COLS.map(function(r) {
+          const icon = r === 'Mother' ? '&#128101;' : r === 'Father' ? '&#128102;' : '&#128104;&#8205;&#128105;&#8205;&#128103;';
+          return '<th style="text-align:center;padding:10px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-left:1px solid var(--border);min-width:70px">' + icon + '<br>' + r + '</th>';
+        }).join('') +
+      '</tr></thead>' +
+      '<tbody>' + relTableRows + '</tbody>' +
+    '</table>'
+  ) : '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">No conditions match your search.</div>';
+
+  // Other questions (text, dropdown, etc.)
+  const otherHtml = filteredOther.length
+    ? '<div class="card" style="margin-top:16px"><div class="card-header"><span class="card-icon">&#128203;</span><div><div class="card-title">Additional Information</div></div></div><div class="card-body"><div class="form-grid">' +
+        filteredOther.map(function(q) { return buildFieldHtml(q, stored['sq_' + q.id]); }).join('') +
+      '</div></div></div>'
+    : '';
+
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128106; Step 3 of 8</div>' +
+    '<div class="section-title">Family History</div>' +
+    '<div class="section-desc">Tap the family member icon next to any condition that has been diagnosed in a first-degree relative.</div>' +
+  '</div>' +
+  '<div class="alert alert-info" style="margin-bottom:16px"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Tap a family member circle to mark that relative. Tap again to deselect. Only first-degree relatives (parents, siblings).</div>' +
+  '<div class="card">' +
+    '<div class="card-body" style="padding-bottom:12px">' +
+      '<div class="disease-search-wrap">' +
+        '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+        '<input type="text" class="disease-search" id="fhSearch" placeholder="Search conditions, e.g. Diabetes, Cancer, Heart…" oninput="filterFhList()" value="' + escHtml(fhSearchQuery) + '">' +
+      '</div>' +
+    '</div>' +
+    '<div style="overflow-x:auto">' + relTable + '</div>' +
+  '</div>' +
+  otherHtml +
+  actionBar('saveFamily()');
+}
+
+function toggleRelative(rowId, btn) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const isSelected = btn.style.borderColor.includes('primary') || btn.style.background.includes('primary');
+  // Toggle visual
+  btn.style.borderColor = isSelected ? 'var(--border)' : 'var(--primary)';
+  btn.style.background  = isSelected ? '#fff' : 'var(--primary-light)';
+  // Update row highlight
+  const anySelected = Array.from(row.querySelectorAll('button')).some(function(b) {
+    return b.style.background.includes('primary');
+  });
+  row.style.background = anySelected ? '#f0f9ff' : '#fff';
+  const condCell = row.querySelector('td:first-child');
+  if (condCell) condCell.style.fontWeight = anySelected ? '700' : '500';
 }
 
 function filterFhList() {
-  fhSearchQuery = document.getElementById('fhSearch').value;
-  const fh = appData.familyHistory || {};
-  const list = document.getElementById('fhToggleList');
-  if (list) { list.innerHTML = renderFhToggleList(fh); restoreFhState(fh); }
-}
-
-function restoreFhState(fh) {
-  FH_CONDITIONS.forEach(function(c) {
-    const el = document.getElementById(c.key);
-    if (!el) return;
-    el.checked = appData[c.key] === true || (fh && fh[c.key] === true);
-    appData[c.key] = el.checked;
-    const exp = document.getElementById('exp_' + c.key);
-    if (exp) exp.style.display = el.checked ? 'block' : 'none';
-  });
+  fhSearchQuery = document.getElementById('fhSearch') ? document.getElementById('fhSearch').value : '';
+  renderFamilyContent(_familyQuestions || [], appData.familyHistory || {});
 }
 
 async function saveFamily() {
+  const qs = _familyQuestions || [];
   const body = {};
-  FH_CONDITIONS.forEach(function(c) {
-    body[c.key] = !!(document.getElementById(c.key) && document.getElementById(c.key).checked);
-    if (c.detailKey) body[c.detailKey] = val(c.detailKey);
+  qs.forEach(function(q) {
+    const fieldId = 'sq_' + q.id;
+    const type = (q.answerType || '').toUpperCase();
+    if (type === 'MULTI_SELECT') {
+      const selected = [];
+      // New table layout: buttons inside the row with data-val
+      const row = document.getElementById(fieldId + '_ms');
+      if (row) {
+        row.querySelectorAll('button').forEach(function(b) {
+          if (b.style.background.includes('primary') || b.style.borderColor.includes('primary')) {
+            selected.push(b.dataset.val);
+          }
+        });
+      } else {
+        // Fallback: old pill layout
+        document.querySelectorAll('#' + fieldId + '_ms .pill.selected').forEach(function(b) { selected.push(b.dataset.val); });
+      }
+      body[fieldId] = selected;
+    } else {
+      const el = document.getElementById(fieldId);
+      body[fieldId] = el ? el.value.trim() : '';
+    }
   });
-  body.notes = val('fhNotes');
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   const ok = await saveSection('family-history', body);
@@ -547,11 +676,25 @@ async function saveFamily() {
 }
 
 // ─────────────────────────────────────────────────
-// SECTION 4 — INSURANCE & CLAIMS
+// SECTION 4 — INSURANCE & CLAIMS (dynamic)
 // ─────────────────────────────────────────────────
-function renderClaims() {
-  const ch = appData.claimsHistory || {};
-  const yesNoStore = function(v) { return v === true ? 'Yes' : v === false ? 'No' : ''; };
+let _claimsQuestions = null;
+
+async function renderClaims() {
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128203; Step 4 of 8</div>' +
+    '<div class="section-title">Insurance &amp; Claims History</div>' +
+    '<div class="section-desc">Tell us about any existing health insurance policies and previous claims.</div>' +
+  '</div>' +
+  '<div class="card"><div class="card-body"><div class="text-muted text-sm">Loading questions…</div></div></div>';
+
+  const qs = await fetchSectionQuestions('claims');
+  _claimsQuestions = qs;
+  const stored = appData.claimsHistory || {};
+
+  const fieldsHtml = '<div class="form-grid">' + qs.map(q => buildFieldHtml(q, stored['sq_' + q.id])).join('') + '</div>';
+
   document.getElementById('mainContent').innerHTML =
   '<div class="section-header">' +
     '<div class="section-eyebrow">&#128203; Step 4 of 8</div>' +
@@ -559,56 +702,17 @@ function renderClaims() {
     '<div class="section-desc">Tell us about any existing health insurance policies and previous claims.</div>' +
   '</div>' +
   '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#128737;</span><div><div class="card-title">Existing Coverage</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>Do you have existing health insurance? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('existingInsGroup', ['Yes','No'], yesNoStore(ch.hasExistingInsurance)) + '</div></div>' +
-        '<div class="form-group"><label>Current insurer <span class="hint-text">(if yes)</span></label><input class="field" type="text" id="currentInsurer" placeholder="e.g. Daman, AXA, MetLife" value="' + escHtml(ch.currentInsurer||'') + '"></div>' +
-        '<div class="form-group"><label>Coverage amount (AED)</label><input class="field" type="number" id="coverageAmount" placeholder="500000" value="' + escHtml(String(ch.coverageAmount||'')) + '"></div>' +
-        '<div class="form-group"><label>Policy expiry date</label><input class="field" type="date" id="policyExpiry" value="' + escHtml(ch.policyExpiry||'') + '"></div>' +
-      '</div>' +
-    '</div>' +
-  '</div>' +
-  '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#128202;</span><div><div class="card-title">Previous Claims (Last 3 Years)</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>Have you made any claims? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('prevClaimsGroup', ['Yes','No'], yesNoStore(ch.hasPreviousClaims)) + '</div></div>' +
-        '<div class="form-group"><label>Number of claims</label><input class="field" type="number" id="claimsCount" min="0" placeholder="0" value="' + escHtml(String(ch.claimsCount||'')) + '"></div>' +
-        '<div class="form-group"><label>Total claimed amount (AED)</label><input class="field" type="number" id="claimsAmount" placeholder="0" value="' + escHtml(String(ch.claimsAmount||'')) + '"></div>' +
-        '<div class="form-group"><label>Reason for major claims</label><input class="field" type="text" id="claimsReason" placeholder="e.g. Surgery, hospitalisation" value="' + escHtml(ch.claimsReason||'') + '"></div>' +
-      '</div>' +
-    '</div>' +
-  '</div>' +
-  '<div class="card">' +
-    '<div class="card-header"><span class="card-icon">&#128683;</span><div><div class="card-title">Previous Declines or Loading</div></div></div>' +
-    '<div class="card-body">' +
-      '<div class="form-grid">' +
-        '<div class="form-group"><label>Has any insurer previously declined your application? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('declinedGroup', ['Yes','No'], yesNoStore(ch.previouslyDeclined)) + '</div></div>' +
-        '<div class="form-group"><label>Has any insurer applied a premium loading? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('loadingGroup', ['Yes','No'], yesNoStore(ch.premiumLoading)) + '</div></div>' +
-        '<div class="form-group full"><label>Please provide details <span class="hint-text">(if yes to either)</span></label><textarea class="field" id="declineDetails" placeholder="Describe the circumstances…">' + escHtml(ch.declineDetails||'') + '</textarea></div>' +
-      '</div>' +
-    '</div>' +
+    '<div class="card-header"><span class="card-icon">&#128737;</span><div><div class="card-title">Insurance Details</div></div></div>' +
+    '<div class="card-body">' + fieldsHtml + '</div>' +
   '</div>' +
   actionBar('saveClaims()');
 }
 
 async function saveClaims() {
-  const hasIns = getPill('existingInsGroup'), hasClaims = getPill('prevClaimsGroup');
-  const declined = getPill('declinedGroup'), loading = getPill('loadingGroup');
-  const missingCl = [];
-  if (!hasIns) missingCl.push('Existing health insurance (Yes/No)');
-  if (!hasClaims) missingCl.push('Previous claims (Yes/No)');
-  if (!declined) missingCl.push('Previously declined (Yes/No)');
-  if (!loading) missingCl.push('Premium loading (Yes/No)');
-  if (missingCl.length) { toast('Please answer: ' + missingCl.join(', '), 'error'); return; }
-  const body = {
-    hasExistingInsurance: hasIns === 'Yes', currentInsurer: val('currentInsurer'),
-    coverageAmount: parseFloat(val('coverageAmount')) || 0, policyExpiry: val('policyExpiry'),
-    hasPreviousClaims: hasClaims === 'Yes', claimsCount: parseInt(val('claimsCount')) || 0,
-    claimsAmount: parseFloat(val('claimsAmount')) || 0, claimsReason: val('claimsReason'),
-    previouslyDeclined: declined === 'Yes', premiumLoading: loading === 'Yes', declineDetails: val('declineDetails'),
-  };
+  const qs = _claimsQuestions || [];
+  const body = collectSectionAnswers(qs);
+  const missing = validateSectionAnswers(qs, body);
+  if (missing.length) { toast('Please answer: ' + missing.join(', '), 'error'); return; }
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   const ok = await saveSection('claims-history', body);
@@ -617,11 +721,10 @@ async function saveClaims() {
 }
 
 // ─────────────────────────────────────────────────
-// SECTION 5 — DISCLOSURE OF GOOD HEALTH (redesigned)
+// SECTION 5 — DISCLOSURE OF GOOD HEALTH
+// Gateway: "Are you in good health?" → Yes skips medical conditions
 // ─────────────────────────────────────────────────
-// Screening questions — answered with Yes/No chips
 const DISC_QUESTIONS = [
-  { key:'inGoodHealth',         label:'Are you currently in good general health?',                sub:'No known significant ongoing medical conditions',           yesGood:true },
   { key:'recentHospitalisation',label:'Have you been hospitalised in the last 3 years?',          sub:'Inpatient stays of more than 24 hours',                    yesGood:false },
   { key:'ongoingMedication',    label:'Are you currently on any prescribed medication?',           sub:'Regular or long-term prescriptions',                       yesGood:false },
   { key:'upcomingSurgery',      label:'Do you have any planned surgery or procedures?',            sub:'Scheduled within the next 12 months',                      yesGood:false },
@@ -632,11 +735,16 @@ const DISC_QUESTIONS = [
 ];
 
 let discAnswers = {};
+// null = not answered, 'yes' = in good health (skip conditions), 'no' = needs assessment
+let goodHealthAnswer = null;
 
 function renderDisclosure() {
   const disc = appData.disclosures || {};
-  // Restore saved answers
   DISC_QUESTIONS.forEach(function(q) { discAnswers[q.key] = disc[q.key] !== undefined ? (disc[q.key] ? 'Yes' : 'No') : ''; });
+  // Restore gateway answer
+  if (disc.inGoodHealth === true) goodHealthAnswer = 'yes';
+  else if (disc.inGoodHealth === false) goodHealthAnswer = 'no';
+  else goodHealthAnswer = null;
 
   document.getElementById('mainContent').innerHTML =
   '<div class="section-header">' +
@@ -648,8 +756,57 @@ function renderDisclosure() {
     '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
     'Deliberate non-disclosure may invalidate your policy.' +
   '</div>' +
-  '<div id="discQuestionsWrap">' + renderDiscQuestions(disc) + '</div>' +
+  // ── Gateway question ──────────────────────────
+  '<div id="discGateway" style="background:#fff;border:2px solid ' + (goodHealthAnswer ? (goodHealthAnswer === 'yes' ? '#16a34a' : 'var(--primary)') : 'var(--border)') + ';border-radius:14px;padding:28px 28px 24px;margin-bottom:24px">' +
+    '<div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:6px">Are you currently in good health?</div>' +
+    '<div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">No known significant medical conditions, not on long-term medication, no recent hospitalisations.</div>' +
+    '<div style="display:flex;gap:12px">' +
+      '<button type="button" id="ghYesBtn" onclick="setGoodHealth(\'yes\')" style="' + gatewayBtnStyle(goodHealthAnswer === 'yes', true) + '">&#10003; Yes — I am in good health</button>' +
+      '<button type="button" id="ghNoBtn"  onclick="setGoodHealth(\'no\')"  style="' + gatewayBtnStyle(goodHealthAnswer === 'no', false) + '">&#9888; No — I have medical conditions to declare</button>' +
+    '</div>' +
+  '</div>' +
+  '<div id="discDetailSection">' + (goodHealthAnswer === 'no' ? renderDiscDetailBlock(disc) : '') + '</div>' +
+  '<div id="discGoodHealthMsg">' + (goodHealthAnswer === 'yes' ? renderGoodHealthMsg() : '') + '</div>' +
   actionBar('saveDisclosure()');
+}
+
+function gatewayBtnStyle(isSelected, isYes) {
+  if (isSelected && isYes)  return 'padding:12px 24px;border-radius:10px;border:2px solid #16a34a;background:#dcfce7;color:#15803d;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;transition:all .12s';
+  if (isSelected && !isYes) return 'padding:12px 24px;border-radius:10px;border:2px solid var(--primary);background:var(--primary-light);color:var(--primary);font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;transition:all .12s';
+  return 'padding:12px 24px;border-radius:10px;border:1.5px solid var(--border);background:#fff;color:var(--text-muted);font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;transition:all .12s';
+}
+
+function renderGoodHealthMsg() {
+  return '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:20px 24px;display:flex;gap:14px;align-items:flex-start">' +
+    '<div style="font-size:24px;line-height:1;flex-shrink:0">&#10004;&#65039;</div>' +
+    '<div><div style="font-size:15px;font-weight:700;color:#15803d;margin-bottom:4px">Great — no medical assessment required</div>' +
+    '<div style="font-size:13px;color:#166534">Since you are in good health, you can proceed directly to Documents. The Medical Conditions section will be skipped.</div></div>' +
+  '</div>';
+}
+
+function renderDiscDetailBlock(disc) {
+  return '<div style="margin-bottom:8px;font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Additional Health Questions</div>' +
+  '<div id="discQuestionsWrap">' + renderDiscQuestions(disc) + '</div>';
+}
+
+function setGoodHealth(val) {
+  goodHealthAnswer = val;
+  const disc = appData.disclosures || {};
+  // Update gateway card border
+  const gw = document.getElementById('discGateway');
+  if (gw) gw.style.borderColor = val === 'yes' ? '#16a34a' : 'var(--primary)';
+  // Update button styles
+  const yBtn = document.getElementById('ghYesBtn');
+  const nBtn = document.getElementById('ghNoBtn');
+  if (yBtn) yBtn.style.cssText = gatewayBtnStyle(val === 'yes', true);
+  if (nBtn) nBtn.style.cssText = gatewayBtnStyle(val === 'no', false);
+  // Show/hide sections
+  const detail = document.getElementById('discDetailSection');
+  const msg = document.getElementById('discGoodHealthMsg');
+  if (detail) detail.innerHTML = val === 'no' ? renderDiscDetailBlock(disc) : '';
+  if (msg) msg.innerHTML = val === 'yes' ? renderGoodHealthMsg() : '';
+  // Hide/show conditions in nav
+  updateConditionsNavVisibility();
 }
 
 function renderDiscQuestions(disc) {
@@ -694,197 +851,288 @@ function setDiscAnswer(key, value) {
   if (wrap) wrap.innerHTML = renderDiscQuestions(disc);
 }
 
+function updateConditionsNavVisibility() {
+  // When good health = yes, mark conditions as skipped/done so nav shows it handled
+  // We do NOT remove it from nav — just keep state consistent on save
+}
+
 async function saveDisclosure() {
-  const unanswered = DISC_QUESTIONS.filter(function(q) { return !discAnswers[q.key]; });
-  if (unanswered.length) { toast('Please answer all questions. Unanswered: ' + unanswered.map(function(q) { return q.label.split('?')[0]; }).join('; '), 'error'); return; }
-  const body = {};
-  DISC_QUESTIONS.forEach(function(q) { body[q.key] = discAnswers[q.key] === 'Yes'; });
-  body.medicationDetails = val('medicationDetails');
-  body.hospitalisationDetails = val('hospitalisationDetails');
-  body.hospitalisationReason = val('hospitalisationReason');
-  body.surgeryDetails = val('surgeryDetails');
-  body.mentalHealthDetails = val('mentalHealthDetails');
-  body.chronicConditionDetails = val('chronicConditionDetails');
-  body.substanceDetails = val('substanceDetails');
+  if (!goodHealthAnswer) { toast('Please answer the good health question first', 'error'); return; }
+  if (goodHealthAnswer === 'no') {
+    const unanswered = DISC_QUESTIONS.filter(function(q) { return !discAnswers[q.key]; });
+    if (unanswered.length) { toast('Please answer all questions. Unanswered: ' + unanswered.map(function(q) { return q.label.split('?')[0]; }).join('; '), 'error'); return; }
+  }
+  const body = { inGoodHealth: goodHealthAnswer === 'yes' };
+  if (goodHealthAnswer === 'no') {
+    DISC_QUESTIONS.forEach(function(q) { body[q.key] = discAnswers[q.key] === 'Yes'; });
+    body.medicationDetails = val('medicationDetails');
+    body.hospitalisationDetails = val('hospitalisationDetails');
+    body.hospitalisationReason = val('hospitalisationReason');
+    body.surgeryDetails = val('surgeryDetails');
+    body.mentalHealthDetails = val('mentalHealthDetails');
+    body.chronicConditionDetails = val('chronicConditionDetails');
+    body.substanceDetails = val('substanceDetails');
+  }
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   const ok = await saveSection('disclosures', body);
-  if (ok) { appData.disclosures = body; markDone('disclosure'); nextSection(); }
-  else resetNextBtn();
+  if (ok) {
+    appData.disclosures = body;
+    markDone('disclosure');
+    if (goodHealthAnswer === 'yes') {
+      // Skip conditions — mark it complete automatically and go straight to documents
+      completed.add('conditions');
+      selectedDiseases.clear();
+      currentSection = 'documents';
+      renderNav();
+      renderSection();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      nextSection();
+    }
+  } else resetNextBtn();
 }
 
 // ─────────────────────────────────────────────────
-// SECTION 6 — MEDICAL CONDITIONS (dashboard flow)
+// SECTION 6 — MEDICAL CONDITIONS
 // ─────────────────────────────────────────────────
-const DISEASE_EMOJIS = { d1:'🍬',d2:'❤️',d3:'🫁',d4:'🎗️',d5:'🫘',d6:'🧠',d7:'🦴',d8:'⚡',d9:'🔬',d10:'🌸',d11:'➕' };
-// Track per-disease assessment completion
 let assessmentStatus = {}; // id -> 'pending' | 'completed'
-let activeAssessmentId = null; // which disease assessment is open in modal
+let activeAssessmentId = null;
+let cohortsList = [];
+let selectedCohortId = null; // null = "All" (no filter)
+let condDiseaseSearch = '';
 
 async function renderConditions() {
-  if (!diseasesList.length) {
-    try {
-      const r = await fetch('/api/diseases');
-      const d = await r.json();
-      diseasesList = d.data || [];
-    } catch (e) { diseasesList = []; }
-  }
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128138; Step 6 of 8</div>' +
+    '<div class="section-title">Medical Conditions</div>' +
+    '<div class="section-desc">Loading…</div>' +
+  '</div><div class="card"><div class="card-body"><div class="text-muted text-sm">Loading conditions…</div></div></div>';
+
+  try {
+    const [cr, dr] = await Promise.all([fetch('/api/cohorts'), fetch('/api/diseases')]);
+    const cd = await cr.json(); cohortsList = (cd.data || []).filter(function(c) { return c.isActive; });
+    const dd = await dr.json(); diseasesList = (dd.data || []).filter(function(d) { return d.isActive; });
+  } catch(e) { cohortsList = []; diseasesList = []; }
+
+  // Don't auto-select a cohort — start with "All"
+  if (selectedCohortId && !cohortsList.find(function(c) { return c.id === selectedCohortId; })) selectedCohortId = null;
+  condDiseaseSearch = '';
   renderConditionsDashboard();
 }
 
 function renderConditionsDashboard() {
-  const hasSelected = selectedDiseases.size > 0;
+  // ── Category filter tabs (All + each cohort) ──
+  const allActive = !selectedCohortId;
+  const cohortTabsHtml =
+    '<button type="button" onclick="selectCondCohort(null)" style="' + cohortTabStyle(allActive) + '">All</button>' +
+    cohortsList.map(function(c) {
+      return '<button type="button" onclick="selectCondCohort(\'' + c.id + '\')" style="' + cohortTabStyle(c.id === selectedCohortId) + '">' + escHtml(c.name) + '</button>';
+    }).join('');
 
-  const cardsHtml = diseasesList.map(function(d) {
-    const emoji = DISEASE_EMOJIS[d.id] || '💊';
-    const sel = selectedDiseases.has(d.id);
-    return '<div class="disease-card ' + (sel ? 'selected' : '') + '" id="dc_' + d.id + '" onclick="toggleDisease(\'' + d.id + '\')">' +
-      '<div class="disease-check"><svg width="11" height="11" fill="none" stroke="#fff" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>' +
-      '<span class="disease-emoji">' + emoji + '</span>' +
-      '<div class="disease-name">' + escHtml(d.name) + '</div>' +
-    '</div>';
-  }).join('');
+  // ── Filtered disease list ──────────────────────
+  // Global search across ALL diseases; cohort tab is an optional secondary filter
+  const q = condDiseaseSearch.toLowerCase();
+  const visibleDiseases = diseasesList.filter(function(d) {
+    const matchesSearch = !q || d.name.toLowerCase().includes(q);
+    const matchesCohort = !selectedCohortId || d.cohortId === selectedCohortId;
+    return matchesSearch && matchesCohort;
+  });
 
-  // Selected conditions as assessment dashboard cards
+  // Group by cohort for display when no search term and no cohort filter
+  const showGrouped = !q && !selectedCohortId;
+
+  let diseaseRowsHtml = '';
+  if (!visibleDiseases.length) {
+    diseaseRowsHtml = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">' +
+      (q ? 'No conditions match "' + escHtml(condDiseaseSearch) + '".' : 'No conditions available.') + '</div>';
+  } else if (showGrouped) {
+    // Render with cohort group headings
+    cohortsList.forEach(function(c) {
+      const group = visibleDiseases.filter(function(d) { return d.cohortId === c.id; });
+      if (!group.length) return;
+      diseaseRowsHtml += '<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);background:var(--bg);border-bottom:1px solid var(--border)">' + escHtml(c.name) + '</div>';
+      group.forEach(function(d) { diseaseRowsHtml += diseaseRowHtml(d); });
+    });
+  } else {
+    visibleDiseases.forEach(function(d) { diseaseRowsHtml += diseaseRowHtml(d); });
+  }
+
+  // ── Selected conditions dashboard ─────────────
   const dashCards = Array.from(selectedDiseases).map(function(id) {
     const d = diseasesList.find(function(x) { return x.id === id; });
-    const emoji = DISEASE_EMOJIS[id] || '💊';
-    const status = assessmentStatus[id] || 'pending';
-    const isDone = status === 'completed';
+    const isDone = assessmentStatus[id] === 'completed';
     const statusBadge = isDone
-      ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#16a34a;background:#dcfce7;padding:3px 10px;border-radius:999px">&#10003; Completed</span>'
-      : '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#d97706;background:#fef3c7;padding:3px 10px;border-radius:999px">&#9888; Assessment Pending</span>';
-    const btnLabel = isDone ? '&#9998; Edit Assessment' : '&#9654; Start Assessment';
+      ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#16a34a;background:#dcfce7;padding:3px 10px;border-radius:999px">&#10003; Assessment complete</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#d97706;background:#fef3c7;padding:3px 10px;border-radius:999px">&#9888; Assessment required</span>';
     const btnStyle = isDone
       ? 'background:var(--bg);border:1.5px solid var(--border);color:var(--text-muted)'
-      : 'background:var(--primary);border:1.5px solid var(--primary);color:#fff;box-shadow:0 2px 8px rgba(26,86,219,.25)';
-    return '<div style="display:flex;align-items:center;gap:16px;padding:18px 20px;background:#fff;border:1.5px solid ' + (isDone ? '#86efac' : 'var(--border)') + ';border-radius:14px;margin-bottom:12px">' +
-      '<div style="font-size:28px;line-height:1">' + emoji + '</div>' +
-      '<div style="flex:1">' +
-        '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">' + escHtml(d ? d.name : id) + '</div>' +
+      : 'background:var(--primary);border:1.5px solid var(--primary);color:#fff;box-shadow:0 2px 8px rgba(26,86,219,.2)';
+    return '<div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:#fff;border:1.5px solid ' + (isDone ? '#86efac' : 'var(--border)') + ';border-radius:12px;margin-bottom:8px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">' + escHtml(d ? d.name : id) + '</div>' +
         statusBadge +
       '</div>' +
-      '<div style="display:flex;gap:8px">' +
-        '<button onclick="openAssessment(\'' + id + '\')" style="' + btnStyle + ';padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + btnLabel + '</button>' +
-        '<button onclick="removeCondition(\'' + id + '\')" style="background:none;border:1.5px solid var(--border);color:var(--text-muted);padding:9px 12px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit" title="Remove">&times;</button>' +
+      '<div style="display:flex;gap:8px;flex-shrink:0">' +
+        '<button onclick="openAssessment(\'' + id + '\')" style="' + btnStyle + ';padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + (isDone ? '&#9998; Edit' : '&#9654; Start Assessment') + '</button>' +
+        '<button onclick="removeCondition(\'' + id + '\')" style="background:none;border:1.5px solid var(--border);color:var(--text-muted);padding:8px 10px;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit" title="Remove">&times;</button>' +
       '</div>' +
     '</div>';
   }).join('');
+
+  const hasSelected = selectedDiseases.size > 0;
 
   document.getElementById('mainContent').innerHTML =
   '<div class="section-header">' +
     '<div class="section-eyebrow">&#128138; Step 6 of 8</div>' +
     '<div class="section-title">Medical Conditions</div>' +
-    '<div class="section-desc">Select your diagnosed conditions below, then complete a short assessment for each one.</div>' +
+    '<div class="section-desc">Search for your diagnosed conditions and complete a short questionnaire for each one.</div>' +
   '</div>' +
 
-  // Condition picker
+  // Picker card
   '<div class="card" style="margin-bottom:20px">' +
-    '<div class="card-header" style="cursor:pointer" onclick="toggleConditionPicker()">' +
+    '<div class="card-header">' +
       '<span class="card-icon">&#128269;</span>' +
-      '<div style="flex:1"><div class="card-title">Add a Medical Condition</div><div class="card-desc">Search or select from the library</div></div>' +
-      '<svg id="pickerChevron" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="transition:transform .2s"><polyline points="6 9 12 15 18 9"/></svg>' +
+      '<div><div class="card-title">Find &amp; Add a Condition</div><div class="card-desc">Search by name, or browse by category</div></div>' +
     '</div>' +
-    '<div id="conditionPickerBody" class="card-body">' +
-      '<div class="disease-search-wrap" style="margin-bottom:16px">' +
+    '<div class="card-body" style="padding-bottom:0">' +
+      // Global search — prominent, top of card
+      '<div class="disease-search-wrap" style="margin-bottom:12px">' +
         '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
-        '<input type="text" class="disease-search" id="diseaseSearch" placeholder="Search conditions, e.g. Diabetes, Heart…" oninput="filterDiseases()">' +
+        '<input type="text" class="disease-search" id="condDiseaseSearch" placeholder="Search any condition — Hypertension, Diabetes, Asthma…" value="' + escHtml(condDiseaseSearch) + '" oninput="filterCondDiseases()" autofocus>' +
       '</div>' +
-      '<div class="disease-grid" id="diseaseGrid">' + cardsHtml + '</div>' +
-      '<div class="no-results" id="noResults" style="display:none">No conditions match your search.</div>' +
+      // Category filter tabs
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px">' + cohortTabsHtml + '</div>' +
     '</div>' +
+    // Results list
+    '<div style="max-height:300px;overflow-y:auto;border-top:1px solid var(--border)">' + diseaseRowsHtml + '</div>' +
   '</div>' +
 
-  // Dashboard
-  '<div id="conditionDashboard">' +
-    (hasSelected
-      ? '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:12px">Your Conditions — Complete Each Assessment</div>' + dashCards
-      : '<div style="text-align:center;padding:32px;background:#fff;border:1.5px dashed var(--border-mid);border-radius:14px;color:var(--text-muted)"><div style="font-size:32px;margin-bottom:8px">🩺</div><div style="font-size:14px;font-weight:600">No conditions added yet</div><div style="font-size:13px;margin-top:4px">Select conditions from the library above</div></div>'
-    ) +
-  '</div>' +
-
+  // Dashboard — selected conditions
+  (hasSelected
+    ? '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:10px">Your Conditions — Complete Each Assessment</div>' + dashCards
+    : ''
+  ) +
   actionBar('saveConditions()');
 
-  // Assessment modal (hidden initially)
-  if (!document.getElementById('assessmentModal')) {
-    const modal = document.createElement('div');
-    modal.id = 'assessmentModal';
-    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.45);backdrop-filter:blur(3px)';
-    modal.innerHTML = '<div id="assessmentPanel" style="position:absolute;right:0;top:0;bottom:0;width:min(620px,100vw);background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden">' +
-      '<div id="assessmentHeader" style="padding:24px 28px 20px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:12px">' +
-        '<div id="assessmentIcon" style="font-size:28px"></div>' +
-        '<div style="flex:1"><div id="assessmentTitle" style="font-size:18px;font-weight:800;color:var(--text)"></div><div id="assessmentSub" style="font-size:13px;color:var(--text-muted);margin-top:2px">Condition-specific health assessment</div></div>' +
-        '<button onclick="closeAssessment()" style="background:var(--bg);border:1.5px solid var(--border);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-muted)">&times;</button>' +
-      '</div>' +
-      '<div id="assessmentBody" style="flex:1;overflow-y:auto;padding:28px"></div>' +
-      '<div style="padding:20px 28px;border-top:1px solid var(--border);background:#fff;flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">' +
-        '<button onclick="closeAssessment()" style="padding:10px 20px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--text-muted);font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>' +
-        '<button onclick="saveAssessment()" style="padding:10px 24px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(26,86,219,.3)">&#10003; Save Assessment</button>' +
-      '</div>' +
-    '</div>';
-    document.body.appendChild(modal);
-  }
+  ensureAssessmentModal();
 }
 
-let pickerOpen = true;
-function toggleConditionPicker() {
-  pickerOpen = !pickerOpen;
-  const body = document.getElementById('conditionPickerBody');
-  const chev = document.getElementById('pickerChevron');
-  if (body) body.style.display = pickerOpen ? '' : 'none';
-  if (chev) chev.style.transform = pickerOpen ? '' : 'rotate(-90deg)';
+function cohortTabStyle(isActive) {
+  return 'padding:5px 13px;border-radius:999px;border:1.5px solid ' + (isActive ? 'var(--primary)' : 'var(--border)') +
+    ';background:' + (isActive ? 'var(--primary-light)' : '#fff') +
+    ';color:' + (isActive ? 'var(--primary)' : 'var(--text-muted)') +
+    ';font-weight:' + (isActive ? '700' : '500') +
+    ';font-size:12px;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap';
 }
 
-function filterDiseases() {
-  const q = (document.getElementById('diseaseSearch') && document.getElementById('diseaseSearch').value.toLowerCase()) || '';
-  let count = 0;
-  diseasesList.forEach(function(d) {
-    const card = document.getElementById('dc_' + d.id);
-    if (!card) return;
-    const match = !q || d.name.toLowerCase().includes(q) || (d.description||'').toLowerCase().includes(q);
-    card.classList.toggle('hidden', !match);
-    if (match) count++;
-  });
-  const noR = document.getElementById('noResults');
-  if (noR) noR.style.display = (diseasesList.length && count === 0) ? '' : 'none';
+function diseaseRowHtml(d) {
+  const isAdded = selectedDiseases.has(d.id);
+  const cohort  = cohortsList.find(function(c) { return c.id === d.cohortId; });
+  return '<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .1s" onmouseenter="this.style.background=\'var(--bg)\'" onmouseleave="this.style.background=\'\'">' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:13px;font-weight:600;color:var(--text)">' + escHtml(d.name) + '</div>' +
+      (cohort ? '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">' + escHtml(cohort.name) + '</div>' : '') +
+    '</div>' +
+    (isAdded
+      ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#16a34a;background:#dcfce7;padding:4px 10px;border-radius:6px">&#10003; Added</span>'
+      : '<button onclick="addCondition(\'' + d.id + '\')" style="padding:6px 14px;border-radius:7px;border:1.5px solid var(--primary);background:var(--primary-light);color:var(--primary);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>') +
+  '</div>';
 }
 
-function toggleDisease(id) {
-  if (selectedDiseases.has(id)) {
-    selectedDiseases.delete(id);
-    delete assessmentStatus[id];
-  } else {
-    selectedDiseases.add(id);
-    if (!assessmentStatus[id]) assessmentStatus[id] = 'pending';
-  }
+function selectCondCohort(id) {
+  selectedCohortId = id;
+  // Don't clear the search term — keep context
   renderConditionsDashboard();
-  // Re-attach picker state
-  if (!pickerOpen) { const b = document.getElementById('conditionPickerBody'); if (b) b.style.display = 'none'; }
+}
+
+function filterCondDiseases() {
+  condDiseaseSearch = document.getElementById('condDiseaseSearch') ? document.getElementById('condDiseaseSearch').value : '';
+  // When user types, clear cohort filter so search is truly global
+  if (condDiseaseSearch) selectedCohortId = null;
+  renderConditionsDashboard();
+}
+
+function addCondition(id) {
+  selectedDiseases.add(id);
+  if (!assessmentStatus[id]) assessmentStatus[id] = 'pending';
+  // Don't re-render full page — just open assessment immediately
+  openAssessment(id);
 }
 
 function removeCondition(id) {
   selectedDiseases.delete(id);
   delete assessmentStatus[id];
+  delete questionsData[id]; // clear cache so it re-fetches if re-added
   renderConditionsDashboard();
 }
 
-// ── Assessment modal ──────────────────────────────
+function ensureAssessmentModal() {
+  if (document.getElementById('assessmentModal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'assessmentModal';
+  modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.45);backdrop-filter:blur(2px)';
+  modal.innerHTML =
+    '<div id="assessmentPanel" style="position:absolute;right:0;top:0;bottom:0;width:min(640px,100vw);background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.16);display:flex;flex-direction:column;overflow:hidden">' +
+      // Header
+      '<div style="padding:20px 24px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+        '<div style="display:flex;align-items:flex-start;gap:12px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div id="assessmentTitle" style="font-size:17px;font-weight:800;color:var(--text);line-height:1.3"></div>' +
+            '<div id="assessmentMeta" style="font-size:12px;color:var(--text-muted);margin-top:4px"></div>' +
+          '</div>' +
+          '<button onclick="closeAssessment()" style="background:var(--bg);border:1.5px solid var(--border);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;flex-shrink:0">&times;</button>' +
+        '</div>' +
+        // Progress bar
+        '<div id="assessmentProgressWrap" style="margin-top:14px;display:none">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:5px">' +
+            '<span style="font-size:11px;font-weight:600;color:var(--text-muted)" id="assessmentProgressLabel"></span>' +
+            '<span style="font-size:11px;font-weight:700;color:var(--primary)" id="assessmentProgressPct"></span>' +
+          '</div>' +
+          '<div style="height:4px;background:var(--border);border-radius:999px;overflow:hidden">' +
+            '<div id="assessmentProgressBar" style="height:100%;background:var(--primary);border-radius:999px;transition:width .3s"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      // Body
+      '<div id="assessmentBody" style="flex:1;overflow-y:auto"></div>' +
+      // Footer
+      '<div style="padding:16px 24px;border-top:1px solid var(--border);background:#fff;flex-shrink:0;display:flex;gap:10px;justify-content:space-between;align-items:center">' +
+        '<div id="assessmentAnsweredCount" style="font-size:12px;color:var(--text-muted)"></div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<button onclick="closeAssessment()" style="padding:10px 20px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--text-muted);font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>' +
+          '<button onclick="saveAssessment()" style="padding:10px 24px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(26,86,219,.3)">&#10003; Save Assessment</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+}
+
+// ── Assessment drawer ─────────────────────────────
 async function openAssessment(id) {
+  ensureAssessmentModal();
   activeAssessmentId = id;
-  if (!questionsData[id]) {
-    try {
-      const r = await fetch('/api/questions?diseaseId=' + id);
-      const d = await r.json();
-      questionsData[id] = d.data || [];
-    } catch (e) { questionsData[id] = []; }
-  }
-  const disease = diseasesList.find(function(x) { return x.id === id; });
-  const emoji = DISEASE_EMOJIS[id] || '💊';
-  document.getElementById('assessmentIcon').textContent = emoji;
-  document.getElementById('assessmentTitle').textContent = disease ? disease.name : id;
-  document.getElementById('assessmentBody').innerHTML = buildAssessmentForm(id);
+
+  // Always fetch fresh — never rely on potentially empty cached result
   document.getElementById('assessmentModal').style.display = '';
   document.body.style.overflow = 'hidden';
+  const disease = diseasesList.find(function(x) { return x.id === id; });
+  const cohort  = disease ? cohortsList.find(function(c) { return c.id === disease.cohortId; }) : null;
+  document.getElementById('assessmentTitle').textContent = disease ? disease.name : id;
+  document.getElementById('assessmentMeta').textContent  = cohort ? cohort.name + ' · Condition-specific questionnaire' : 'Condition-specific questionnaire';
+  document.getElementById('assessmentBody').innerHTML = '<div style="padding:32px 24px;text-align:center;color:var(--text-muted);font-size:13px">Loading questions…</div>';
+  document.getElementById('assessmentProgressWrap').style.display = 'none';
+  document.getElementById('assessmentAnsweredCount').textContent = '';
+
+  try {
+    const r = await fetch('/api/diseases/' + id + '/questions');
+    const data = await r.json();
+    questionsData[id] = (data.data || []).filter(function(q) { return q.isActive !== false; });
+  } catch(e) { questionsData[id] = []; }
+
+  document.getElementById('assessmentBody').innerHTML = buildAssessmentForm(id);
+  updateAssessmentProgress(id);
 }
 
 function closeAssessment() {
@@ -893,23 +1141,50 @@ function closeAssessment() {
   activeAssessmentId = null;
 }
 
+function updateAssessmentProgress(id) {
+  const qs = questionsData[id] || [];
+  const wrap = document.getElementById('assessmentProgressWrap');
+  const label = document.getElementById('assessmentProgressLabel');
+  const pct   = document.getElementById('assessmentProgressPct');
+  const bar   = document.getElementById('assessmentProgressBar');
+  const foot  = document.getElementById('assessmentAnsweredCount');
+  if (!qs.length || !wrap) return;
+
+  let answered = 0;
+  qs.forEach(function(q) {
+    const key = id + '_' + q.id;
+    const v = questionAnswers[key];
+    if (v !== undefined && v !== '' && !(Array.isArray(v) && !v.length)) answered++;
+  });
+
+  const p = Math.round((answered / qs.length) * 100);
+  wrap.style.display = '';
+  label.textContent  = answered + ' of ' + qs.length + ' answered';
+  pct.textContent    = p + '%';
+  bar.style.width    = p + '%';
+  if (foot) foot.textContent = answered === qs.length ? '✓ All questions answered' : (qs.length - answered) + ' question' + (qs.length - answered !== 1 ? 's' : '') + ' remaining';
+}
+
 function buildAssessmentForm(id) {
   const qs = questionsData[id] || [];
   if (!qs.length) {
-    return '<div style="text-align:center;padding:40px 0">' +
-      '<div style="font-size:40px;margin-bottom:12px">✅</div>' +
-      '<div style="font-size:16px;font-weight:700;margin-bottom:6px">No additional questions required</div>' +
-      '<div style="font-size:13px;color:var(--text-muted)">This condition has been added to your profile. Click "Save Assessment" to confirm.</div>' +
+    // This should not happen if questionnaires are seeded — show a diagnostic note
+    return '<div style="padding:32px 24px">' +
+      '<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:10px;padding:16px 20px">' +
+        '<div style="font-size:14px;font-weight:700;color:#92400e;margin-bottom:4px">No questions loaded</div>' +
+        '<div style="font-size:13px;color:#b45309">The questionnaire for this condition could not be loaded. Please check your Admin Portal configuration and ensure questions are configured and active for this disease.</div>' +
+      '</div>' +
     '</div>';
   }
 
   return qs.map(function(q, idx) {
     const key = id + '_' + q.id;
     const stored = questionAnswers[key] !== undefined ? questionAnswers[key] : '';
-    // Normalise type to lowercase for easy comparison
-    const qtype = (q.type || '').toLowerCase().replace('_', '');
+    // Normalise type — replace ALL underscores before lowercasing
+    const rawType = (q.answerType || q.type || 'text');
+    const qtype = rawType.toLowerCase().replace(/_/g, '');
     // isMulti: MULTI_SELECT type
-    const isMulti = qtype === 'multiselect' || qtype === 'multi_select';
+    const isMulti = qtype === 'multiselect';
     const opts = q.options || [];
 
     const label = '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">' +
@@ -917,24 +1192,26 @@ function buildAssessmentForm(id) {
       '<div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4">' + escHtml(q.text) + '</div>' +
     '</div>';
 
+    const answered = stored !== '' && !(Array.isArray(stored) && !stored.length);
     const wrap = function(inner) {
-      return '<div style="margin-bottom:0;padding:20px 24px;border-bottom:1px solid var(--border)">' + label + inner + '</div>';
+      return '<div style="padding:18px 24px;border-bottom:1px solid var(--border);background:' + (answered ? '#fafffe' : '#fff') + '">' + label + inner + '</div>';
     };
+    const onchange = 'updateAssessmentProgress(\'' + id + '\')';
 
     // NUMBER
     if (qtype === 'number') {
-      return wrap('<input class="field" type="number" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Enter a number…" style="max-width:200px" oninput="questionAnswers[\'' + key + '\']=this.value">');
+      return wrap('<input class="field" type="number" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Enter a number…" style="max-width:200px" oninput="questionAnswers[\'' + key + '\']=this.value;' + onchange + '">');
     }
     // DATE
     if (qtype === 'date') {
-      return wrap('<input class="field" type="date" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" style="max-width:220px" onchange="questionAnswers[\'' + key + '\']=this.value">');
+      return wrap('<input class="field" type="date" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" style="max-width:220px" onchange="questionAnswers[\'' + key + '\']=this.value;' + onchange + '">');
     }
     // TEXT
     if (qtype === 'text') {
-      return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value">');
+      return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value;' + onchange + '">');
     }
-    // YES_NO — two big radio-style buttons
-    if (qtype === 'yesno' || qtype === 'yes_no' || qtype === 'boolean') {
+    // YES_NO — normalised qtype is 'yesno' after stripping underscore
+    if (qtype === 'yesno' || qtype === 'boolean') {
       const isY = stored === 'Yes', isN = stored === 'No';
       return wrap(
         '<div style="display:flex;gap:10px">' +
@@ -943,15 +1220,15 @@ function buildAssessmentForm(id) {
         '</div>'
       );
     }
-    // DROPDOWN — render as single-select chips (friendlier than a <select>)
+    // DROPDOWN — render as chip group
     if (qtype === 'dropdown' || qtype === 'select') {
-      if (!opts.length) return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value">');
+      if (!opts.length) return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value;' + onchange + '">');
       const optHtml = opts.map(function(o) { return chipBtn(key, o, stored === o, false); }).join('');
       return wrap('<div id="qg_' + key + '" style="display:flex;flex-wrap:wrap;gap:8px">' + optHtml + '</div>');
     }
-    // MULTI_SELECT
+    // MULTI_SELECT — normalised qtype is 'multiselect'
     if (isMulti) {
-      const storedArr = Array.isArray(stored) ? stored : (stored ? stored.split(', ') : []);
+      const storedArr = Array.isArray(stored) ? stored : (stored ? [stored] : []);
       const optHtml = opts.map(function(o) { return chipBtn(key, o, storedArr.includes(o), true); }).join('');
       return wrap(
         '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em">Select all that apply</div>' +
@@ -959,7 +1236,7 @@ function buildAssessmentForm(id) {
       );
     }
     // Fallback: treat as text
-    return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value">');
+    return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value;' + onchange + '">');
   }).join('');
 }
 
@@ -983,20 +1260,35 @@ function selectAssessmentAnswer(key, value, isMulti, btn) {
     if (idx > -1) stored.splice(idx, 1); else stored.push(value);
     questionAnswers[key] = stored;
     btn.style.borderColor = stored.includes(value) ? 'var(--primary)' : 'var(--border)';
-    btn.style.background = stored.includes(value) ? 'var(--primary-light)' : '#fff';
-    btn.style.color = stored.includes(value) ? 'var(--primary)' : 'var(--text-muted)';
-    btn.style.fontWeight = stored.includes(value) ? '700' : '500';
+    btn.style.background  = stored.includes(value) ? 'var(--primary-light)' : '#fff';
+    btn.style.color       = stored.includes(value) ? 'var(--primary)' : 'var(--text-muted)';
+    btn.style.fontWeight  = stored.includes(value) ? '700' : '500';
   } else {
     questionAnswers[key] = value;
+    // Update all sibling chips in this question's group
     const group = document.getElementById('qg_' + key);
-    if (group) group.querySelectorAll('.ans-chip-lg').forEach(function(b) {
-      const isThis = b.textContent.trim() === value;
-      b.style.borderColor = isThis ? 'var(--primary)' : 'var(--border)';
-      b.style.background = isThis ? 'var(--primary-light)' : '#fff';
-      b.style.color = isThis ? 'var(--primary)' : 'var(--text-muted)';
-      b.style.fontWeight = isThis ? '700' : '500';
-    });
+    if (group) {
+      group.querySelectorAll('button').forEach(function(b) {
+        const isThis = b.textContent.trim() === value;
+        b.style.borderColor = isThis ? 'var(--primary)' : 'var(--border)';
+        b.style.background  = isThis ? 'var(--primary-light)' : '#fff';
+        b.style.color       = isThis ? 'var(--primary)' : 'var(--text-muted)';
+        b.style.fontWeight  = isThis ? '700' : '500';
+      });
+    } else {
+      // Yes/No buttons — update parent row siblings
+      const parent = btn.parentElement;
+      if (parent) parent.querySelectorAll('button').forEach(function(b) {
+        const isThis = b.textContent.trim() === value;
+        b.style.borderColor = isThis ? 'var(--primary)' : 'var(--border)';
+        b.style.background  = isThis ? 'var(--primary-light)' : '#fff';
+        b.style.color       = isThis ? 'var(--primary)' : 'var(--text-muted)';
+        b.style.fontWeight  = isThis ? '700' : '500';
+      });
+    }
   }
+  // Update progress after any chip selection
+  if (activeAssessmentId) updateAssessmentProgress(activeAssessmentId);
 }
 
 function saveAssessment() {
@@ -1004,7 +1296,9 @@ function saveAssessment() {
   if (!id) return;
   assessmentStatus[id] = 'completed';
   closeAssessment();
+  // Re-render the dashboard so the card flips to "Completed"
   renderConditionsDashboard();
+  toast('Assessment saved', 'success');
 }
 
 async function saveConditions() {

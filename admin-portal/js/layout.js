@@ -5,6 +5,7 @@ function renderLayout(pageTitle, breadcrumb) {
     { page: null,                          icon: null,         label: 'Configuration',         section: true },
     { page: 'disease-master.html',         icon: iconDisease,  label: 'Disease Master' },
     { page: 'questionnaire-builder.html',  icon: iconQuiz,     label: 'Questionnaire Builder' },
+    { page: 'section-config.html',         icon: iconSliders,  label: 'Section Configuration' },
     { page: 'risk-factors.html',           icon: iconSliders,  label: 'Risk Factors' },
     { page: 'rules-engine.html',           icon: iconRules,    label: 'Rules Engine' },
     { page: 'decision-matrix.html',        icon: iconMatrix,   label: 'Decision Matrix' },
@@ -28,7 +29,7 @@ function renderLayout(pageTitle, breadcrumb) {
 
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-logo">
-      <div class="sidebar-logo-mark">D</div>
+      <img src="/public/daman-logo.webp" alt="Daman Health" style="height:32px;width:auto;object-fit:contain;display:block">
       <div class="sidebar-logo-text">Daman Health<span>Underwriting Platform</span></div>
     </div>
     <nav class="sidebar-nav">${navHtml}</nav>

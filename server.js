@@ -14,6 +14,12 @@ app.use(express.json({ limit: '20mb' }));
 // Serve static portals
 app.use('/admin', express.static(path.join(__dirname, 'admin-portal')));
 app.use('/customer', express.static(path.join(__dirname, 'customer-portal')));
+app.use('/public', express.static(path.join(__dirname, 'public')));
+// Serve logo at root so both portals can use /daman-logo.png
+app.get('/daman-logo.png', (req, res) => {
+  res.setHeader('Content-Type', 'image/webp');
+  res.sendFile(path.join(__dirname, 'public', 'daman-logo.webp'));
+});
 app.get('/', (req, res) => res.redirect('/admin/login.html'));
 
 // ── Auth middleware ──────────────────────────────────────────
@@ -51,6 +57,11 @@ app.get('/api/diseases/active', (req, res) => {
   res.json({ success: true, data: store.diseases.filter(d => d.isActive) });
 });
 
+// ── COHORTS (public for customer portal) ─────────────────────
+app.get('/api/cohorts', (req, res) => {
+  res.json({ success: true, data: store.cohorts.filter(c => c.isActive).sort((a,b) => a.orderIndex - b.orderIndex) });
+});
+
 // ── QUESTIONS (public for customer portal) ───────────────────
 app.get('/api/questions', (req, res) => {
   const { diseaseId } = req.query;
@@ -58,18 +69,70 @@ app.get('/api/questions', (req, res) => {
   if (diseaseId) qs = qs.filter(q => q.diseaseId === diseaseId);
   qs = qs.sort((a, b) => a.orderIndex - b.orderIndex);
   // Normalize answerType -> type for customer portal
-  const mapped = qs.map(q => ({ id: q.id, diseaseId: q.diseaseId, text: q.text, type: q.answerType || q.type || 'select', options: q.options || [] }));
+  const mapped = qs.map(q => ({ id: q.id, diseaseId: q.diseaseId, text: q.text, type: q.answerType || q.type || 'select', options: q.options || [], answerType: q.answerType || q.type || 'TEXT' }));
   res.json({ success: true, data: mapped });
+});
+
+// ── DISEASE QUESTIONS (public — by disease id path) ──────────
+app.get('/api/diseases/:id/questions', (req, res) => {
+  const qs = store.questions
+    .filter(q => q.diseaseId === req.params.id && q.isActive)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map(q => ({ id: q.id, diseaseId: q.diseaseId, text: q.text, answerType: q.answerType || 'TEXT', type: q.answerType || 'TEXT', options: q.options || [], isMandatory: q.isMandatory || false }));
+  res.json({ success: true, data: qs });
+});
+
+// ── COHORTS ───────────────────────────────────────────────────
+app.get('/api/admin/cohorts', auth, (req, res) => {
+  res.json({ success: true, data: store.cohorts.sort((a,b) => a.orderIndex - b.orderIndex) });
+});
+
+app.post('/api/admin/cohorts', auth, adminOnly, (req, res) => {
+  const { name, description } = req.body;
+  if (!name) return res.status(400).json({ success: false, error: 'Name required' });
+  const c = { id: uuid(), name, description: description||'', orderIndex: store.cohorts.length + 1, isActive: true };
+  store.cohorts.push(c);
+  store.addAudit(req.user.id, 'COHORT_CREATED', 'Cohort', c.id, null, c);
+  res.json({ success: true, data: c });
+});
+
+app.put('/api/admin/cohorts/:id', auth, adminOnly, (req, res) => {
+  const c = store.cohorts.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ success: false, error: 'Not found' });
+  const before = { ...c };
+  Object.assign(c, req.body);
+  store.addAudit(req.user.id, 'COHORT_UPDATED', 'Cohort', c.id, before, c);
+  res.json({ success: true, data: c });
+});
+
+app.patch('/api/admin/cohorts/:id/toggle', auth, adminOnly, (req, res) => {
+  const c = store.cohorts.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ success: false, error: 'Not found' });
+  c.isActive = !c.isActive;
+  store.addAudit(req.user.id, 'COHORT_TOGGLED', 'Cohort', c.id, null, { isActive: c.isActive });
+  res.json({ success: true, data: c });
+});
+
+app.delete('/api/admin/cohorts/:id', auth, adminOnly, (req, res) => {
+  const c = store.cohorts.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ success: false, error: 'Not found' });
+  const diseaseCount = store.diseases.filter(d => d.cohortId === c.id && d.isActive).length;
+  if (diseaseCount > 0) return res.status(400).json({ success: false, error: `Cannot delete: ${diseaseCount} active disease(s) in this cohort. Disable them first.` });
+  c.isActive = false;
+  store.addAudit(req.user.id, 'COHORT_DELETED', 'Cohort', c.id, null, null);
+  res.json({ success: true });
 });
 
 app.get('/api/admin/diseases', auth, (req, res) => res.json({ success: true, data: store.diseases }));
 
 app.post('/api/admin/diseases', auth, adminOnly, (req, res) => {
-  const { name, cohort, riskWeight } = req.body;
-  const d = { id: uuid(), name, cohort, riskWeight: Number(riskWeight), isActive: true };
-  store.diseases.push(d);
-  store.addAudit(req.user.id, 'DISEASE_CREATED', 'Disease', d.id, null, d);
-  res.json({ success: true, data: d });
+  const { name, cohortId, riskWeight, severity, loadingPct, uwImpact } = req.body;
+  const cohortObj = store.cohorts.find(c => c.id === cohortId);
+  const cohort = cohortObj ? cohortObj.name : (req.body.cohort || '');
+  const dis = { id: uuid(), name, cohortId: cohortId||'', cohort, riskWeight: Number(riskWeight)||0, severity: severity||'MODERATE', loadingPct: Number(loadingPct)||0, uwImpact: uwImpact||'REFER', isActive: true };
+  store.diseases.push(dis);
+  store.addAudit(req.user.id, 'DISEASE_CREATED', 'Disease', dis.id, null, dis);
+  res.json({ success: true, data: dis });
 });
 
 app.put('/api/admin/diseases/:id', auth, adminOnly, (req, res) => {
@@ -91,13 +154,13 @@ app.delete('/api/admin/diseases/:id', auth, adminOnly, (req, res) => {
 
 // ── QUESTIONS ────────────────────────────────────────────────
 app.get('/api/admin/diseases/:id/questions', auth, (req, res) => {
-  res.json({ success: true, data: store.questions.filter(q => q.diseaseId === req.params.id && q.isActive).sort((a, b) => a.orderIndex - b.orderIndex) });
+  res.json({ success: true, data: store.questions.filter(q => q.diseaseId === req.params.id).sort((a, b) => a.orderIndex - b.orderIndex) });
 });
 
 app.post('/api/admin/diseases/:id/questions', auth, adminOnly, (req, res) => {
-  const { text, answerType, options } = req.body;
+  const { text, answerType, options, isMandatory, conditionalOn } = req.body;
   const existing = store.questions.filter(q => q.diseaseId === req.params.id);
-  const q = { id: uuid(), diseaseId: req.params.id, text, answerType, options: options || [], orderIndex: existing.length + 1, isActive: true, conditions: [] };
+  const q = { id: uuid(), diseaseId: req.params.id, text, answerType, options: options || [], isMandatory: !!isMandatory, conditionalOn: conditionalOn || null, orderIndex: existing.length + 1, isActive: true };
   store.questions.push(q);
   store.addAudit(req.user.id, 'QUESTION_CREATED', 'Question', q.id, null, q);
   res.json({ success: true, data: q });
@@ -331,6 +394,85 @@ function matchRule(conditions, app_, score) {
   if (conditions.combinator === 'or') return conditions.rules.some(check);
   return false;
 }
+
+// ── SECTION QUESTIONS (public read for customer portal) ──────
+app.get('/api/section-questions', (req, res) => {
+  const { section } = req.query;
+  let qs = store.sectionQuestions.filter(q => q.isActive);
+  if (section) qs = qs.filter(q => q.section === section);
+  qs = qs.sort((a, b) => a.orderIndex - b.orderIndex);
+  res.json({ success: true, data: qs });
+});
+
+// ── SECTION QUESTIONS ADMIN CRUD ─────────────────────────────
+app.get('/api/admin/section-questions', auth, (req, res) => {
+  const { section } = req.query;
+  let qs = store.sectionQuestions;
+  if (section) qs = qs.filter(q => q.section === section);
+  qs = qs.sort((a, b) => a.orderIndex - b.orderIndex);
+  res.json({ success: true, data: qs });
+});
+
+app.post('/api/admin/section-questions', auth, adminOnly, (req, res) => {
+  const { section, text, answerType, options, isMandatory } = req.body;
+  const existing = store.sectionQuestions.filter(q => q.section === section);
+  const q = {
+    id: uuid(),
+    section,
+    text,
+    answerType: answerType || 'TEXT',
+    options: options || [],
+    orderIndex: existing.length + 1,
+    isActive: true,
+    isMandatory: !!isMandatory,
+  };
+  store.sectionQuestions.push(q);
+  store.addAudit(req.user.id, 'SECTION_Q_CREATED', 'SectionQuestion', q.id, null, q);
+  res.json({ success: true, data: q });
+});
+
+app.put('/api/admin/section-questions/:id', auth, adminOnly, (req, res) => {
+  const q = store.sectionQuestions.find(x => x.id === req.params.id);
+  if (!q) return res.status(404).json({ success: false, error: 'Not found' });
+  const before = { ...q };
+  Object.assign(q, req.body);
+  store.addAudit(req.user.id, 'SECTION_Q_UPDATED', 'SectionQuestion', q.id, before, q);
+  res.json({ success: true, data: q });
+});
+
+app.delete('/api/admin/section-questions/:id', auth, adminOnly, (req, res) => {
+  const q = store.sectionQuestions.find(x => x.id === req.params.id);
+  if (!q) return res.status(404).json({ success: false, error: 'Not found' });
+  q.isActive = false;
+  store.addAudit(req.user.id, 'SECTION_Q_DELETED', 'SectionQuestion', q.id, null, null);
+  res.json({ success: true });
+});
+
+app.patch('/api/admin/section-questions/:id/toggle', auth, adminOnly, (req, res) => {
+  const q = store.sectionQuestions.find(x => x.id === req.params.id);
+  if (!q) return res.status(404).json({ success: false, error: 'Not found' });
+  q.isActive = !q.isActive;
+  store.addAudit(req.user.id, 'SECTION_Q_TOGGLED', 'SectionQuestion', q.id, null, { isActive: q.isActive });
+  res.json({ success: true, data: q });
+});
+
+app.patch('/api/admin/section-questions/:id/mandatory', auth, adminOnly, (req, res) => {
+  const q = store.sectionQuestions.find(x => x.id === req.params.id);
+  if (!q) return res.status(404).json({ success: false, error: 'Not found' });
+  q.isMandatory = !q.isMandatory;
+  store.addAudit(req.user.id, 'SECTION_Q_MANDATORY_TOGGLED', 'SectionQuestion', q.id, null, { isMandatory: q.isMandatory });
+  res.json({ success: true, data: q });
+});
+
+app.post('/api/admin/section-questions/reorder', auth, adminOnly, (req, res) => {
+  const { section, ids } = req.body; // ids: ordered array of question IDs
+  if (!Array.isArray(ids)) return res.status(400).json({ success: false, error: 'ids must be array' });
+  ids.forEach((id, idx) => {
+    const q = store.sectionQuestions.find(x => x.id === id && x.section === section);
+    if (q) q.orderIndex = idx + 1;
+  });
+  res.json({ success: true });
+});
 
 // ── ADMIN APPLICATIONS ───────────────────────────────────────
 app.get('/api/admin/applications', auth, (req, res) => {

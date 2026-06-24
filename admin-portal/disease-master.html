@@ -5,6 +5,41 @@
 <title>Disease Master — Daman UW</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.dm-layout{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+/* Left panel */
+.cohort-item{padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;background:var(--surface);transition:all .12s;margin-bottom:4px;position:relative}
+.cohort-item:hover{border-color:var(--primary);background:var(--primary-light)}
+.cohort-item.active{border-color:var(--primary);background:var(--primary-light)}
+.cohort-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cohort-item.active .cohort-name{color:var(--primary)}
+.cohort-meta{font-size:11px;color:var(--text-muted);margin-top:1px}
+.cohort-kebab{position:absolute;top:8px;right:8px;opacity:0;transition:opacity .1s;background:none;border:none;cursor:pointer;padding:2px 5px;border-radius:4px;font-size:14px;color:var(--text-muted);line-height:1}
+.cohort-item:hover .cohort-kebab{opacity:1}
+.cohort-item.active .cohort-kebab{opacity:1}
+.cohort-dropdown{position:absolute;top:32px;right:8px;z-index:50;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:120px;overflow:hidden}
+.cohort-dropdown button{display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--text)}
+.cohort-dropdown button:hover{background:var(--bg)}
+.cohort-dropdown button.danger{color:#dc2626}
+/* Right panel summary bar */
+.dm-summary{display:flex;gap:16px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.dm-stat{font-size:12px;color:var(--text-muted)}
+.dm-stat strong{color:var(--text);font-weight:700}
+/* Severity / UW */
+.sev-high{color:#dc2626;font-weight:700;font-size:11px}
+.sev-mod{color:#d97706;font-weight:700;font-size:11px}
+.sev-low{color:#16a34a;font-weight:700;font-size:11px}
+.uw-impact{font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.uw-decline{background:#fee2e2;color:#dc2626}
+.uw-refer{background:#fef3c7;color:#b45309}
+.uw-load{background:#dbeafe;color:#1d4ed8}
+/* Search box */
+.search-box{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;margin-bottom:10px;outline:none;background:var(--bg);box-sizing:border-box}
+.search-box:focus{border-color:var(--primary)}
+/* Compact table actions */
+.row-actions{display:flex;gap:4px;opacity:0;transition:opacity .1s}
+tr:hover .row-actions{opacity:1}
+</style>
 </head>
 <body>
 <div class="layout">
@@ -15,56 +50,111 @@
       <div class="page-header">
         <div>
           <div class="page-title">Disease Master</div>
-          <div class="page-subtitle">Manage disease categories, cohorts, and risk weights</div>
+          <div class="page-subtitle">Cohort → Disease hierarchy with underwriting configuration</div>
         </div>
-        <button class="btn btn-primary" onclick="openModal('diseaseModal'); resetForm()">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Disease
-        </button>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">All Diseases</span>
-          <div class="toolbar-search">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="input" type="text" id="searchInput" placeholder="Search diseases…" oninput="filterTable(this.value)">
+      <div class="dm-layout">
+        <!-- Left: Cohorts -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Cohorts</span>
+            <button class="btn btn-sm btn-primary" onclick="openCohortModal()">+ Add Cohort</button>
+          </div>
+          <div class="card-body" style="padding:12px">
+            <input type="text" class="search-box" id="cohortSearch" placeholder="Search cohorts…" oninput="filterCohorts()">
+            <div id="cohortList"><div class="text-muted text-sm">Loading…</div></div>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Disease Name</th><th>Cohort</th><th>Risk Weight</th><th>Status</th><th style="width:120px">Actions</th></tr></thead>
-            <tbody id="tableBody"><tr><td colspan="5" class="text-muted" style="padding:24px;text-align:center">Loading…</td></tr></tbody>
-          </table>
+
+        <!-- Right: Diseases in selected cohort -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title" id="diseasesPanelTitle">Diseases</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div class="toolbar-search" id="diseaseSearchWrap">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input class="input" type="text" id="diseaseSearch" placeholder="Search diseases…" oninput="filterDiseases()">
+              </div>
+              <button class="btn btn-sm btn-primary" id="addDiseaseBtn" onclick="openDiseaseModal()">+ Add Disease</button>
+            </div>
+          </div>
+          <div id="dmSummaryBar" class="dm-summary" style="display:none"></div>
+          <div id="diseasesPanel"></div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Modal -->
-<div class="modal-overlay" id="diseaseModal">
+<!-- Cohort Modal -->
+<div class="modal-overlay" id="cohortModal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title" id="modalTitle">Add Disease</span>
+      <span class="modal-title" id="cohortModalTitle">Add Cohort</span>
+      <button class="btn-ghost" onclick="closeModal('cohortModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cohortEditId">
+      <div class="form-group">
+        <label>Cohort Name <span class="required">*</span></label>
+        <input class="input" type="text" id="cohortName" placeholder="e.g. Cardiovascular">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input class="input" type="text" id="cohortDesc" placeholder="e.g. Heart and blood vessel conditions">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('cohortModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCohort()">Save Cohort</button>
+    </div>
+  </div>
+</div>
+
+<!-- Disease Modal -->
+<div class="modal-overlay" id="diseaseModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="diseaseModalTitle">Add Disease</span>
       <button class="btn-ghost" onclick="closeModal('diseaseModal')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="editId">
+      <input type="hidden" id="diseaseEditId">
       <div class="form-group">
-        <label>Disease Name <span class="required">*</span></label>
-        <input class="input" type="text" id="fieldName" placeholder="e.g. Diabetes & Metabolic">
+        <label>Disease / Condition Name <span class="required">*</span></label>
+        <input class="input" type="text" id="diseaseName" placeholder="e.g. Hypertension (High Blood Pressure)">
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Cohort / Category <span class="required">*</span></label>
-          <input class="input" type="text" id="fieldCohort" placeholder="e.g. Metabolic">
+          <label>Severity <span class="required">*</span></label>
+          <select class="select" id="diseaseSeverity">
+            <option value="LOW">Low</option>
+            <option value="MODERATE">Moderate</option>
+            <option value="HIGH">High</option>
+          </select>
         </div>
         <div class="form-group">
+          <label>UW Impact <span class="required">*</span></label>
+          <select class="select" id="diseaseUwImpact">
+            <option value="LOAD">Load Premium</option>
+            <option value="REFER">Refer</option>
+            <option value="DECLINE">Decline</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
           <label>Risk Weight (%) <span class="required">*</span></label>
-          <input class="input" type="number" id="fieldWeight" min="0" max="100" placeholder="e.g. 20">
+          <input class="input" type="number" id="diseaseRiskWeight" min="0" max="100" placeholder="e.g. 25">
+        </div>
+        <div class="form-group">
+          <label>Loading % <span class="required">*</span></label>
+          <input class="input" type="number" id="diseaseLoadingPct" min="0" max="200" placeholder="e.g. 20">
         </div>
       </div>
     </div>
@@ -82,80 +172,236 @@
 if (!requireAuth()) throw '';
 renderLayout('Disease Master');
 
-let diseases = [];
+let cohorts = [], diseases = [], selectedCohortId = null, cohortFilter = '', diseaseFilter = '';
 
-async function load() {
-  const r = await apiFetch('/admin/diseases');
-  diseases = r.data || [];
-  render(diseases);
+// Close any open dropdown when clicking outside
+document.addEventListener('click', () => closeAllDropdowns());
+
+function closeAllDropdowns() {
+  document.querySelectorAll('.cohort-dropdown').forEach(d => d.remove());
 }
 
-function render(list) {
-  const tbody = document.getElementById('tableBody');
-  if (!list.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><p>No diseases configured</p><small>Add your first disease to get started.</small></div></td></tr>`; return; }
-  tbody.innerHTML = list.map(d => `
-    <tr>
-      <td><strong>${d.name}</strong></td>
-      <td><span class="tag">${d.cohort}</span></td>
-      <td><span style="font-weight:600;color:var(--primary)">${d.riskWeight}%</span></td>
-      <td>${badge(d.isActive ? 'ACTIVE' : 'INACTIVE')}</td>
-      <td>
-        <div class="flex gap-8">
-          <button class="btn btn-sm btn-secondary" onclick="editDisease('${d.id}')">
-            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Edit
-          </button>
-          <button class="btn btn-sm btn-danger" onclick="deleteDisease('${d.id}','${d.name}')">
-            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-          </button>
-        </div>
-      </td>
-    </tr>`).join('');
+// ── Load ─────────────────────────────────────────
+async function load(preserveSelection) {
+  const [cr, dr] = await Promise.all([apiFetch('/admin/cohorts'), apiFetch('/admin/diseases')]);
+  cohorts  = cr.data || [];
+  diseases = dr.data || [];
+  // Auto-select first cohort on initial load; preserve on reload
+  if (!preserveSelection && cohorts.length) selectedCohortId = cohorts[0].id;
+  renderCohorts();
+  renderDiseases();
+  updatePanelHeader();
 }
 
-function filterTable(q) {
-  render(diseases.filter(d => d.name.toLowerCase().includes(q.toLowerCase()) || d.cohort.toLowerCase().includes(q.toLowerCase())));
+function updatePanelHeader() {
+  const c = cohorts.find(x => x.id === selectedCohortId);
+  document.getElementById('diseasesPanelTitle').textContent = c ? c.name : 'Diseases';
 }
 
-function resetForm() {
-  document.getElementById('editId').value = '';
-  document.getElementById('fieldName').value = '';
-  document.getElementById('fieldCohort').value = '';
-  document.getElementById('fieldWeight').value = '';
-  document.getElementById('modalTitle').textContent = 'Add Disease';
+// ── Cohorts ───────────────────────────────────────
+function filterCohorts() {
+  cohortFilter = document.getElementById('cohortSearch').value.toLowerCase();
+  renderCohorts();
 }
 
-function editDisease(id) {
+function renderCohorts() {
+  const el = document.getElementById('cohortList');
+  const list = cohortFilter ? cohorts.filter(c => c.name.toLowerCase().includes(cohortFilter)) : cohorts;
+  if (!list.length) { el.innerHTML = '<div class="text-muted text-sm">No cohorts found</div>'; return; }
+  el.innerHTML = list.map(c => {
+    const total  = diseases.filter(d => d.cohortId === c.id).length;
+    const active = diseases.filter(d => d.cohortId === c.id && d.isActive).length;
+    const isSel  = c.id === selectedCohortId;
+    return `<div class="cohort-item${isSel ? ' active' : ''}" onclick="selectCohort('${c.id}')">
+      <div class="cohort-name" style="padding-right:20px">${escHtml(c.name)}</div>
+      <div class="cohort-meta">${active} active · ${total} total ${c.isActive ? '' : '· <em>Disabled</em>'}</div>
+      <button class="cohort-kebab" onclick="event.stopPropagation();showCohortMenu(event,'${c.id}')" title="Actions">⋯</button>
+    </div>`;
+  }).join('');
+}
+
+function showCohortMenu(e, id) {
+  e.stopPropagation();
+  closeAllDropdowns();
+  const c = cohorts.find(x => x.id === id);
+  if (!c) return;
+  const btn = e.currentTarget;
+  const item = btn.closest('.cohort-item');
+  const menu = document.createElement('div');
+  menu.className = 'cohort-dropdown';
+  menu.innerHTML =
+    `<button onclick="closeAllDropdowns();openEditCohort('${id}')">Edit</button>` +
+    `<button onclick="closeAllDropdowns();toggleCohort('${id}')">${c.isActive ? 'Disable' : 'Enable'}</button>` +
+    `<button class="danger" onclick="closeAllDropdowns();deleteCohort('${id}')">Delete</button>`;
+  item.appendChild(menu);
+}
+
+function selectCohort(id) {
+  selectedCohortId = id;
+  diseaseFilter = '';
+  const inp = document.getElementById('diseaseSearch');
+  if (inp) inp.value = '';
+  renderCohorts();
+  renderDiseases();
+  updatePanelHeader();
+}
+
+function openCohortModal() {
+  document.getElementById('cohortEditId').value = '';
+  document.getElementById('cohortName').value = '';
+  document.getElementById('cohortDesc').value = '';
+  document.getElementById('cohortModalTitle').textContent = 'Add Cohort';
+  openModal('cohortModal');
+}
+
+function openEditCohort(id) {
+  const c = cohorts.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('cohortEditId').value = c.id;
+  document.getElementById('cohortName').value = c.name;
+  document.getElementById('cohortDesc').value = c.description || '';
+  document.getElementById('cohortModalTitle').textContent = 'Edit Cohort';
+  openModal('cohortModal');
+}
+
+async function saveCohort() {
+  const id   = document.getElementById('cohortEditId').value;
+  const body = { name: document.getElementById('cohortName').value.trim(), description: document.getElementById('cohortDesc').value.trim() };
+  if (!body.name) { toast('Cohort name is required', 'error'); return; }
+  const r = await apiFetch(id ? `/admin/cohorts/${id}` : '/admin/cohorts', { method: id ? 'PUT' : 'POST', body });
+  if (r.success) { toast('Saved', 'success'); closeModal('cohortModal'); load(true); }
+  else toast(r.error || 'Error', 'error');
+}
+
+async function toggleCohort(id) {
+  const r = await apiFetch(`/admin/cohorts/${id}/toggle`, { method: 'PATCH', body: {} });
+  if (r.success) { toast('Updated', 'success'); load(true); }
+  else toast(r.error || 'Error', 'error');
+}
+
+async function deleteCohort(id) {
+  if (!confirm('Delete this cohort? All diseases must be disabled first.')) return;
+  const r = await apiFetch(`/admin/cohorts/${id}`, { method: 'DELETE' });
+  if (r.success) { toast('Cohort deleted', 'success'); if (selectedCohortId === id) selectedCohortId = cohorts[0]?.id || null; load(true); }
+  else toast(r.error || 'Error', 'error');
+}
+
+// ── Diseases ──────────────────────────────────────
+function filterDiseases() {
+  diseaseFilter = document.getElementById('diseaseSearch').value.toLowerCase();
+  renderDiseases();
+}
+
+function renderDiseases() {
+  const panel  = document.getElementById('diseasesPanel');
+  const sumBar = document.getElementById('dmSummaryBar');
+  let list = diseases.filter(d => d.cohortId === selectedCohortId);
+
+  // Summary bar
+  if (list.length) {
+    const activeCount  = list.filter(d => d.isActive).length;
+    const highCount    = list.filter(d => d.severity === 'HIGH').length;
+    const declineCount = list.filter(d => d.uwImpact === 'DECLINE').length;
+    sumBar.style.display = 'flex';
+    sumBar.innerHTML =
+      `<span class="dm-stat"><strong>${activeCount}</strong> active</span>` +
+      `<span class="dm-stat" style="color:var(--border)">|</span>` +
+      `<span class="dm-stat"><strong>${list.length - activeCount}</strong> disabled</span>` +
+      `<span class="dm-stat" style="color:var(--border)">|</span>` +
+      `<span class="dm-stat"><strong class="sev-high">${highCount}</strong> high severity</span>` +
+      `<span class="dm-stat" style="color:var(--border)">|</span>` +
+      `<span class="dm-stat"><strong style="color:#dc2626">${declineCount}</strong> decline</span>`;
+  } else {
+    sumBar.style.display = 'none';
+  }
+
+  if (diseaseFilter) list = list.filter(d => d.name.toLowerCase().includes(diseaseFilter));
+
+  if (!list.length) {
+    panel.innerHTML = '<div class="empty"><p>' + (diseaseFilter ? 'No matching diseases' : 'No diseases yet') + '</p><small>' +
+      (diseaseFilter ? 'Try a different search term.' : 'Click "+ Add Disease" to add the first disease to this cohort.') + '</small></div>';
+    return;
+  }
+
+  panel.innerHTML = '<div class="table-wrap"><table>' +
+    '<thead><tr><th>Disease / Condition</th><th>Severity</th><th>Risk Wt</th><th>Loading %</th><th>UW Impact</th><th>Status</th><th style="width:110px"></th></tr></thead>' +
+    '<tbody>' + list.map(d => `
+      <tr>
+        <td><span style="font-weight:600;color:var(--text)">${escHtml(d.name)}</span></td>
+        <td><span class="sev-${(d.severity||'mod').toLowerCase()}">${d.severity||'—'}</span></td>
+        <td style="font-weight:700;color:var(--primary)">${d.riskWeight||0}%</td>
+        <td style="color:var(--text-muted)">${d.loadingPct||0}%</td>
+        <td><span class="uw-impact uw-${(d.uwImpact||'refer').toLowerCase()}">${d.uwImpact||'REFER'}</span></td>
+        <td>${badge(d.isActive ? 'ACTIVE' : 'INACTIVE')}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn btn-sm btn-secondary" onclick="openEditDisease('${d.id}')">Edit</button>
+            <button class="btn btn-sm btn-secondary" onclick="toggleDisease('${d.id}')">${d.isActive?'Disable':'Enable'}</button>
+            <button class="btn btn-sm btn-danger"    onclick="deleteDisease('${d.id}')" title="Deactivate">✕</button>
+          </div>
+        </td>
+      </tr>`).join('') +
+    '</tbody></table></div>';
+}
+
+function openDiseaseModal() {
+  document.getElementById('diseaseEditId').value = '';
+  document.getElementById('diseaseName').value = '';
+  document.getElementById('diseaseSeverity').value = 'MODERATE';
+  document.getElementById('diseaseUwImpact').value = 'REFER';
+  document.getElementById('diseaseRiskWeight').value = '';
+  document.getElementById('diseaseLoadingPct').value = '';
+  document.getElementById('diseaseModalTitle').textContent = 'Add Disease';
+  openModal('diseaseModal');
+}
+
+function openEditDisease(id) {
   const d = diseases.find(x => x.id === id);
   if (!d) return;
-  document.getElementById('editId').value = d.id;
-  document.getElementById('fieldName').value = d.name;
-  document.getElementById('fieldCohort').value = d.cohort;
-  document.getElementById('fieldWeight').value = d.riskWeight;
-  document.getElementById('modalTitle').textContent = 'Edit Disease';
+  document.getElementById('diseaseEditId').value = d.id;
+  document.getElementById('diseaseName').value = d.name;
+  document.getElementById('diseaseSeverity').value = d.severity || 'MODERATE';
+  document.getElementById('diseaseUwImpact').value = d.uwImpact || 'REFER';
+  document.getElementById('diseaseRiskWeight').value = d.riskWeight || 0;
+  document.getElementById('diseaseLoadingPct').value = d.loadingPct || 0;
+  document.getElementById('diseaseModalTitle').textContent = 'Edit Disease';
   openModal('diseaseModal');
 }
 
 async function saveDisease() {
-  const id = document.getElementById('editId').value;
+  const id   = document.getElementById('diseaseEditId').value;
   const body = {
-    name: document.getElementById('fieldName').value.trim(),
-    cohort: document.getElementById('fieldCohort').value.trim(),
-    riskWeight: Number(document.getElementById('fieldWeight').value),
+    name:       document.getElementById('diseaseName').value.trim(),
+    cohortId:   selectedCohortId,
+    severity:   document.getElementById('diseaseSeverity').value,
+    uwImpact:   document.getElementById('diseaseUwImpact').value,
+    riskWeight: Number(document.getElementById('diseaseRiskWeight').value),
+    loadingPct: Number(document.getElementById('diseaseLoadingPct').value),
   };
-  if (!body.name || !body.cohort || !body.riskWeight) { toast('All fields are required', 'error'); return; }
-  const method = id ? 'PUT' : 'POST';
-  const path = id ? `/admin/diseases/${id}` : '/admin/diseases';
-  const r = await apiFetch(path, { method, body });
-  if (r.success) { toast(id ? 'Disease updated' : 'Disease added', 'success'); closeModal('diseaseModal'); load(); }
+  if (!body.name) { toast('Disease name is required', 'error'); return; }
+  if (!body.cohortId) { toast('Select a cohort first', 'error'); return; }
+  const r = await apiFetch(id ? `/admin/diseases/${id}` : '/admin/diseases', { method: id ? 'PUT' : 'POST', body });
+  if (r.success) { toast('Saved', 'success'); closeModal('diseaseModal'); load(true); }
   else toast(r.error || 'Error', 'error');
 }
 
-async function deleteDisease(id, name) {
-  if (!confirm(`Deactivate "${name}"?`)) return;
-  const r = await apiFetch(`/admin/diseases/${id}`, { method: 'DELETE' });
-  if (r.success) { toast('Disease deactivated', 'success'); load(); }
+async function toggleDisease(id) {
+  const d = diseases.find(x => x.id === id);
+  if (!d) return;
+  const r = await apiFetch(`/admin/diseases/${id}`, { method: 'PUT', body: { isActive: !d.isActive } });
+  if (r.success) { toast('Updated', 'success'); load(true); }
   else toast(r.error || 'Error', 'error');
+}
+
+async function deleteDisease(id) {
+  if (!confirm('Deactivate this disease? Questions for it will remain.')) return;
+  const r = await apiFetch(`/admin/diseases/${id}`, { method: 'DELETE' });
+  if (r.success) { toast('Deactivated', 'success'); load(true); }
+  else toast(r.error || 'Error', 'error');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 load();

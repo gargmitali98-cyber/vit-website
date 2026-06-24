@@ -57,12 +57,8 @@ body {
 }
 .topbar-brand { display: flex; align-items: center; gap: 10px; }
 .brand-mark {
-  width: 34px; height: 34px;
-  background: linear-gradient(135deg, #1a56db, #0ea5e9);
-  border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 800; font-size: 15px;
-  box-shadow: 0 2px 8px rgba(26,86,219,.35);
+  height: 36px; width: auto;
+  display: block; object-fit: contain;
 }
 .brand-name { font-weight: 700; font-size: 14px; line-height: 1.2; }
 .brand-sub { font-size: 11px; font-weight: 400; color: var(--text-muted); }
