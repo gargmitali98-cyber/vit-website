@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Risk Factors — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.rf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.rf-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:var(--shadow)}
+.rf-card-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.rf-name{font-size:14px;font-weight:700}
+.rf-type{font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--primary-light);color:var(--primary)}
+.rf-weight{font-size:12px;color:var(--text-muted);margin-bottom:10px}
+.rf-weight span{font-weight:700;color:var(--text)}
+.threshold-list{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.threshold-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg);border-radius:var(--radius);font-size:12px}
+.threshold-loading{font-weight:600;color:var(--warning)}
+.threshold-loading.zero{color:var(--success)}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Risk Factor Configuration</div>
+          <div class="page-subtitle">Define weightages and premium loading thresholds</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAdd()">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Risk Factor
+        </button>
+      </div>
+      <div class="rf-grid" id="rfGrid"><div class="text-muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rfModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="rfModalTitle">Add Risk Factor</span>
+      <button class="btn-ghost" onclick="closeModal('rfModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rfEditId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Factor Name <span class="required">*</span></label>
+          <input class="input" type="text" id="rfName" placeholder="e.g. Smoking">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select class="select" id="rfType">
+            <option value="LIFESTYLE">Lifestyle</option>
+            <option value="CLAIMS">Claims History</option>
+            <option value="FAMILY">Family History</option>
+            <option value="MEDICAL">Medical</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Weightage (%) <span class="required">*</span></label>
+        <input class="input" type="number" id="rfWeightage" min="0" max="100" placeholder="e.g. 10">
+      </div>
+      <div class="form-group">
+        <label>Thresholds</label>
+        <div id="thresholdRows"></div>
+        <button class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="addThresholdRow()">+ Add Threshold</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('rfModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRF()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Risk Factors');
+
+let rfs = [];
+
+async function load() {
+  const r = await apiFetch('/admin/risk-factors');
+  rfs = r.data || [];
+  render();
+}
+
+function render() {
+  const el = document.getElementById('rfGrid');
+  if (!rfs.length) { el.innerHTML = '<div class="empty"><p>No risk factors configured</p></div>'; return; }
+  el.innerHTML = rfs.map(rf => `
+    <div class="rf-card">
+      <div class="rf-card-header">
+        <div>
+          <div class="rf-name">${rf.name}</div>
+          <span class="rf-type">${rf.type}</span>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="editRF('${rf.id}')">Edit</button>
+      </div>
+      <div class="rf-weight">Weightage: <span>${rf.weightage}%</span></div>
+      <div class="threshold-list">
+        ${(rf.thresholds || []).map(t => `
+          <div class="threshold-row">
+            <span>${t.label}</span>
+            <span class="threshold-loading ${t.loadingPct === 0 ? 'zero' : ''}">${t.loadingPct === 0 ? '0% loading' : '+' + t.loadingPct + '% loading'}</span>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function openAdd() {
+  document.getElementById('rfEditId').value = '';
+  document.getElementById('rfName').value = '';
+  document.getElementById('rfType').value = 'LIFESTYLE';
+  document.getElementById('rfWeightage').value = '';
+  document.getElementById('thresholdRows').innerHTML = '';
+  addThresholdRow();
+  document.getElementById('rfModalTitle').textContent = 'Add Risk Factor';
+  openModal('rfModal');
+}
+
+function editRF(id) {
+  const rf = rfs.find(x => x.id === id);
+  if (!rf) return;
+  document.getElementById('rfEditId').value = rf.id;
+  document.getElementById('rfName').value = rf.name;
+  document.getElementById('rfType').value = rf.type;
+  document.getElementById('rfWeightage').value = rf.weightage;
+  const container = document.getElementById('thresholdRows');
+  container.innerHTML = '';
+  rf.thresholds.forEach(t => addThresholdRow(t.label, t.loadingPct));
+  document.getElementById('rfModalTitle').textContent = 'Edit Risk Factor';
+  openModal('rfModal');
+}
+
+function addThresholdRow(label = '', loading = 0) {
+  const row = document.createElement('div');
+  row.className = 'flex gap-8 mb-16 items-center';
+  row.style.marginBottom = '8px';
+  row.innerHTML = `
+    <input class="input thr-label" type="text" placeholder="Label e.g. Never" value="${label}" style="flex:2">
+    <input class="input thr-loading" type="number" placeholder="Loading %" value="${loading}" min="0" max="200" style="flex:1">
+    <button class="btn-ghost" onclick="this.parentElement.remove()" title="Remove">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>`;
+  document.getElementById('thresholdRows').appendChild(row);
+}
+
+async function saveRF() {
+  const id = document.getElementById('rfEditId').value;
+  const thresholds = [...document.querySelectorAll('#thresholdRows > div')].map(row => ({
+    label: row.querySelector('.thr-label').value.trim(),
+    loadingPct: Number(row.querySelector('.thr-loading').value),
+  })).filter(t => t.label);
+  const body = {
+    name: document.getElementById('rfName').value.trim(),
+    type: document.getElementById('rfType').value,
+    weightage: Number(document.getElementById('rfWeightage').value),
+    thresholds,
+  };
+  if (!body.name || !body.weightage) { toast('Name and weightage are required', 'error'); return; }
+  const r = await apiFetch(id ? `/admin/risk-factors/${id}` : '/admin/risk-factors', { method: id ? 'PUT' : 'POST', body });
+  if (r.success) { toast('Saved', 'success'); closeModal('rfModal'); load(); }
+  else toast(r.error || 'Error', 'error');
+}
+
+load();
+</script>
+</body>
+</html>

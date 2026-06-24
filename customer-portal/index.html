@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daman Health — Apply for Coverage</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh}
+.nav{background:#fff;border-bottom:1px solid #e2e8f0;height:64px;display:flex;align-items:center;padding:0 40px;gap:12px}
+.logo-mark{width:34px;height:34px;background:#1a56db;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
+.logo-text{font-weight:700;font-size:15px}
+.logo-sub{font-size:11px;font-weight:400;color:#64748b}
+.hero{background:linear-gradient(135deg,#1e3a8a 0%,#1a56db 60%,#0ea5e9 100%);color:#fff;padding:80px 40px;text-align:center}
+.hero h1{font-size:42px;font-weight:800;margin-bottom:16px;line-height:1.2}
+.hero p{font-size:18px;opacity:.85;max-width:520px;margin:0 auto 36px;line-height:1.7}
+.start-btn{display:inline-flex;align-items:center;gap:10px;background:#fff;color:#1a56db;padding:16px 36px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;border:none;font-family:inherit;transition:transform .12s,box-shadow .12s;box-shadow:0 4px 20px rgba(0,0,0,.2)}
+.start-btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,.25)}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:900px;margin:48px auto 0;text-align:left}
+.feature{background:rgba(255,255,255,.12);backdrop-filter:blur(4px);padding:20px;border-radius:12px;border:1px solid rgba(255,255,255,.2)}
+.feature-icon{font-size:24px;margin-bottom:10px}
+.feature h3{font-size:14px;font-weight:700;margin-bottom:4px}
+.feature p{font-size:13px;opacity:.8;line-height:1.6}
+.info-section{max-width:900px;margin:60px auto;padding:0 40px}
+.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:32px}
+.step-item{text-align:center;padding:20px}
+.step-num{width:40px;height:40px;background:#eff4ff;color:#1a56db;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;margin:0 auto 12px}
+.step-item h4{font-size:13px;font-weight:700;margin-bottom:4px}
+.step-item p{font-size:12px;color:#64748b;line-height:1.5}
+.section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#1a56db;margin-bottom:8px}
+h2{font-size:26px;font-weight:800}
+.footer{background:#0f172a;color:#94a3b8;text-align:center;padding:24px;font-size:13px;margin-top:60px}
+@media(max-width:768px){.features,.steps-grid{grid-template-columns:1fr}.hero h1{font-size:28px}.hero{padding:48px 20px}.info-section{padding:0 20px}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="logo-mark">D</div>
+  <div><div class="logo-text">Daman Health</div><div class="logo-sub">Insurance Application Portal</div></div>
+</nav>
+
+<div class="hero">
+  <h1>Apply for Health Insurance<br>in Minutes</h1>
+  <p>Complete your medical disclosure online. Simple, guided, and secure — no paperwork required.</p>
+  <button class="start-btn" onclick="startApplication()">
+    Start Your Application
+    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+  </button>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">📋</div>
+      <h3>8 Simple Steps</h3>
+      <p>Guided through personal details, medical history, and document upload.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔒</div>
+      <h3>Secure & Confidential</h3>
+      <p>Your medical information is encrypted and never shared without consent.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <h3>Instant Decision</h3>
+      <p>Automated underwriting delivers a decision the moment you submit.</p>
+    </div>
+  </div>
+</div>
+
+<div class="info-section">
+  <div class="section-label">How it works</div>
+  <h2>Four stages to coverage</h2>
+  <div class="steps-grid">
+    <div class="step-item"><div class="step-num">1</div><h4>Personal & Lifestyle</h4><p>Tell us about yourself and your lifestyle habits</p></div>
+    <div class="step-item"><div class="step-num">2</div><h4>Medical Disclosure</h4><p>Select relevant health conditions and answer follow-up questions</p></div>
+    <div class="step-item"><div class="step-num">3</div><h4>Document Upload</h4><p>Attach any supporting medical reports or test results</p></div>
+    <div class="step-item"><div class="step-num">4</div><h4>Review & Submit</h4><p>Confirm your details and receive your underwriting decision</p></div>
+  </div>
+</div>
+
+<footer class="footer">© 2024 Daman Health Insurance. All rights reserved.</footer>
+
+<script>
+async function startApplication() {
+  const btn = document.querySelector('.start-btn');
+  btn.textContent = 'Starting…'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/applications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json();
+    if (data.success) {
+      sessionStorage.setItem('appId', data.data.id);
+      window.location.href = '/customer/apply.html';
+    } else { alert('Error starting application. Please try again.'); btn.textContent = 'Start Your Application'; btn.disabled = false; }
+  } catch { alert('Server error. Make sure the server is running.'); btn.textContent = 'Start Your Application'; btn.disabled = false; }
+}
+</script>
+</body>
+</html>

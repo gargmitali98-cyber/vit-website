@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Apply for Coverage — Daman Health</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/customer/css/style.css">
+</head>
+<body>
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-mark">D</div>
+    <div>
+      <div class="brand-name">Daman Health</div>
+      <div class="brand-sub">Underwriting Application</div>
+    </div>
+  </div>
+  <div class="topbar-divider"></div>
+  <div class="topbar-app-id" id="topbarAppId">—</div>
+  <div class="topbar-right">
+    <div class="save-pill" id="savePill">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      Saved
+    </div>
+    <div class="topbar-help">Need help?</div>
+  </div>
+</header>
+
+<!-- Layout -->
+<div class="app-layout">
+
+  <!-- Left Nav -->
+  <nav class="left-nav">
+    <div class="nav-header">
+      <div class="nav-app-label">Your Application</div>
+      <div class="nav-app-title">Health Disclosure Form</div>
+    </div>
+
+    <div class="nav-progress-wrap">
+      <div class="nav-progress-label">
+        <span>Progress</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="nav-items" id="navItems"></div>
+
+    <div class="nav-footer">
+      <div class="nav-security">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        256-bit encrypted · GDPR compliant
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main-content" id="mainContent"></main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────
+// CONSTANTS & NAV CONFIG
+// ─────────────────────────────────────────────────
+const SECTIONS = [
+  { id: 'personal',    label: 'Personal Information',    sub: 'Name, DOB, contact',      emoji: '👤' },
+  { id: 'lifestyle',   label: 'Lifestyle Factors',       sub: 'Smoking, alcohol, BMI',   emoji: '🏃' },
+  { id: 'family',      label: 'Family History',          sub: 'Hereditary conditions',   emoji: '👨‍👩‍👧' },
+  { id: 'claims',      label: 'Insurance & Claims',      sub: 'Existing cover & claims', emoji: '📋' },
+  { id: 'disclosure',  label: 'Disclosure of Health',    sub: 'Good health declaration', emoji: '🩺' },
+  { id: 'conditions',  label: 'Medical Conditions',      sub: 'Select & answer questions', emoji: '💊' },
+  { id: 'documents',   label: 'Documents',               sub: 'Upload supporting files', emoji: '📎' },
+  { id: 'review',      label: 'Review & Submit',         sub: 'Confirm & submit',        emoji: '✅' },
+];
+
+// ─────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────
+let appId = sessionStorage.getItem('appId') || '';
+let currentSection = 'personal';
+let completed = new Set();
+let appData = {};
+let diseasesList = [];
+let selectedDiseases = new Set();
+let questionAnswers = {};
+let questionsData = {};
+let documents = { identity: [], medical: [], insurance: [] };
+
+// ─────────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────────
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : '#1e293b';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function showSaved() {
+  const el = document.getElementById('savePill');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ─────────────────────────────────────────────────
+// NAV RENDER
+// ─────────────────────────────────────────────────
+function renderNav() {
+  const total = SECTIONS.length - 1;
+  const pct = Math.round((completed.size / total) * 100);
+  document.getElementById('progressFill').style.width = Math.min(pct, 100) + '%';
+  document.getElementById('progressPct').textContent = Math.min(pct, 100) + '%';
+
+  document.getElementById('navItems').innerHTML = SECTIONS.map(function(s) {
+    const isDone = completed.has(s.id);
+    const isActive = s.id === currentSection;
+
+    let statusHtml;
+    if (isDone) statusHtml = '<div class="nav-status done">&#10003;</div>';
+    else if (isActive) statusHtml = '<div class="nav-status active">&#9679;</div>';
+    else statusHtml = '<div class="nav-status pending"></div>';
+
+    const cls = ['nav-item', isActive ? 'active' : '', isDone && !isActive ? 'done' : ''].filter(Boolean).join(' ');
+    return '<div class="' + cls + '" onclick="navigateTo(\'' + s.id + '\')">' +
+      '<div class="nav-icon">' + s.emoji + '</div>' +
+      '<div class="nav-item-body">' +
+        '<div class="nav-item-label">' + s.label + '</div>' +
+        '<div class="nav-item-sub">' + s.sub + '</div>' +
+      '</div>' +
+      statusHtml +
+    '</div>';
+  }).join('');
+}
+
+function navigateTo(id) {
+  if (id === currentSection) return;
+  currentSection = id;
+  renderNav();
+  renderSection();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─────────────────────────────────────────────────
+// SECTION ROUTER
+// ─────────────────────────────────────────────────
+function renderSection() {
+  const map = { personal: renderPersonal, lifestyle: renderLifestyle, family: renderFamily, claims: renderClaims, disclosure: renderDisclosure, conditions: renderConditions, documents: renderDocuments, review: renderReview };
+  document.getElementById('mainContent').innerHTML = '';
+  (map[currentSection] || renderPersonal)();
+}
+
+// ─────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────
+function val(id) {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}
+
+function pillGroup(groupId, options, stored) {
+  return '<div class="pill-group" id="' + groupId + '">' +
+    options.map(o => '<button type="button" class="pill ' + (stored === o ? 'selected' : '') + '" onclick="selectPill(\'' + groupId + '\',\'' + o.replace(/'/g, "\\'") + '\',this)">' + escHtml(o) + '</button>').join('') +
+  '</div>';
+}
+
+function selectPill(groupId, value, btn) {
+  document.querySelectorAll('#' + groupId + ' .pill').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function getPill(groupId) {
+  const sel = document.querySelector('#' + groupId + ' .pill.selected');
+  return sel ? sel.textContent.trim() : '';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function toggleRowHtml(id, label, sub, expandHtml) {
+  const checked = appData[id] === true;
+  return '<div class="toggle-row" id="tr_' + id + '">' +
+    '<div class="toggle-body">' +
+      '<div class="toggle-label">' + label + '</div>' +
+      (sub ? '<div class="toggle-sub">' + sub + '</div>' : '') +
+    '</div>' +
+    '<label class="sw"><input type="checkbox" id="' + id + '" ' + (checked ? 'checked' : '') + ' onchange="onToggle(\'' + id + '\')"><span class="sw-track"></span></label>' +
+  '</div>' +
+  (expandHtml ? '<div class="toggle-expand" id="exp_' + id + '" style="display:' + (checked ? 'block' : 'none') + '">' + expandHtml + '</div>' : '');
+}
+
+function onToggle(id) {
+  const el = document.getElementById(id);
+  appData[id] = el.checked;
+  const exp = document.getElementById('exp_' + id);
+  if (exp) exp.style.display = el.checked ? 'block' : 'none';
+}
+
+async function ensureAppExists() {
+  // Verify the current appId is still valid on the server
+  if (!appId) return false;
+  try {
+    const check = await fetch('/api/applications/' + appId);
+    if (check.status === 404) {
+      // Server was restarted — in-memory app is gone. Create a fresh one.
+      const create = await fetch('/api/applications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const created = await create.json();
+      if (created.success) {
+        appId = created.data.id;
+        sessionStorage.setItem('appId', appId);
+        document.getElementById('topbarAppId').textContent = 'App ID: ' + appId.slice(0, 8) + '…';
+        // Reset completed state since we have a fresh app
+        completed.clear();
+        renderNav();
+        return true;
+      }
+      toast('Could not create application — is the server running?', 'error');
+      return false;
+    }
+    return true;
+  } catch {
+    toast('Cannot reach server — please check it is running on port 3000', 'error');
+    return false;
+  }
+}
+
+async function saveSection(endpoint, body) {
+  if (!appId) { toast('No application ID — please go back to the home page and start a new application', 'error'); return false; }
+  try {
+    let res = await fetch('/api/applications/' + appId + '/' + endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    // If 404, the server likely restarted and lost the in-memory app — recover automatically
+    if (res.status === 404) {
+      const recovered = await ensureAppExists();
+      if (!recovered) return false;
+      res = await fetch('/api/applications/' + appId + '/' + endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+    const data = await res.json();
+    if (!data.success) { toast('Save failed: ' + (data.error || 'Unknown error'), 'error'); return false; }
+    showSaved();
+    return true;
+  } catch (e) {
+    toast('Network error — make sure the server is running on port 3000', 'error');
+    return false;
+  }
+}
+
+function markDone(id) {
+  completed.add(id);
+  renderNav();
+}
+
+function nextSection() {
+  const idx = SECTIONS.findIndex(s => s.id === currentSection);
+  if (idx < SECTIONS.length - 1) {
+    currentSection = SECTIONS[idx + 1].id;
+    renderNav();
+    renderSection();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function actionBar(onNextFn, nextLabel, showBack) {
+  nextLabel = nextLabel || 'Save &amp; Continue';
+  const idx = SECTIONS.findIndex(s => s.id === currentSection);
+  const backBtn = (showBack !== false && idx > 0) ? '<button class="btn btn-ghost" onclick="navigateTo(\'' + SECTIONS[idx-1].id + '\')">&#8592; Back</button>' : '<div></div>';
+  return '<div class="action-bar">' + backBtn +
+    '<button class="btn btn-primary btn-lg" id="nextBtn" onclick="' + onNextFn + '">' + nextLabel +
+      '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>' +
+    '</button></div>';
+}
+
+function resetNextBtn(label) {
+  const btn = document.getElementById('nextBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = (label || 'Save &amp; Continue') + '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>'; }
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 1 — PERSONAL INFORMATION
+// ─────────────────────────────────────────────────
+function renderPersonal() {
+  const pd = appData.personalDetails || {};
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128100; Step 1 of 8</div>' +
+    '<div class="section-title">Personal Information</div>' +
+    '<div class="section-desc">Tell us about yourself so we can personalise your underwriting assessment.</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#128221;</span><div><div class="card-title">Basic Details</div><div class="card-desc">Full name and date of birth as on your passport or Emirates ID</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>First Name <span class="req">*</span></label><input class="field" type="text" id="firstName" placeholder="John" value="' + escHtml(pd.firstName||'') + '"></div>' +
+        '<div class="form-group"><label>Last Name <span class="req">*</span></label><input class="field" type="text" id="lastName" placeholder="Smith" value="' + escHtml(pd.lastName||'') + '"></div>' +
+        '<div class="form-group"><label>Date of Birth <span class="req">*</span></label><input class="field" type="date" id="dob" value="' + escHtml(pd.dob||'') + '"></div>' +
+        '<div class="form-group"><label>Gender <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('genderGroup', ['Male','Female','Other'], pd.gender) + '</div></div>' +
+        '<div class="form-group"><label>Nationality <span class="req">*</span></label><input class="field" type="text" id="nationality" placeholder="e.g. UAE, Indian, British" value="' + escHtml(pd.nationality||'') + '"></div>' +
+        '<div class="form-group"><label>Emirates ID / Passport No. <span class="req">*</span></label><input class="field" type="text" id="idNumber" placeholder="784-XXXX-XXXXXXX-X" value="' + escHtml(pd.idNumber||'') + '"></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#128222;</span><div><div class="card-title">Contact Information</div><div class="card-desc">We\'ll send your decision and updates to these details</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Email Address <span class="req">*</span></label><input class="field" type="email" id="email" placeholder="john@example.com" value="' + escHtml(pd.email||'') + '"></div>' +
+        '<div class="form-group"><label>Mobile Number <span class="req">*</span></label><input class="field" type="tel" id="phone" placeholder="+971 50 000 0000" value="' + escHtml(pd.phone||'') + '"></div>' +
+        '<div class="form-group full"><label>Residential Address <span class="req">*</span></label><input class="field" type="text" id="address" placeholder="Apartment, building, street" value="' + escHtml(pd.address||'') + '"></div>' +
+        '<div class="form-group"><label>Emirate / City <span class="req">*</span></label><input class="field" type="text" id="city" placeholder="Dubai" value="' + escHtml(pd.city||'') + '"></div>' +
+        '<div class="form-group"><label>Occupation <span class="req">*</span></label><input class="field" type="text" id="occupation" placeholder="e.g. Software Engineer" value="' + escHtml(pd.occupation||'') + '"></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  actionBar('savePersonal()', 'Save &amp; Continue', false);
+}
+
+async function savePersonal() {
+  const gender = getPill('genderGroup');
+  const body = {
+    firstName: val('firstName'), lastName: val('lastName'), dob: val('dob'),
+    gender, nationality: val('nationality'), idNumber: val('idNumber'),
+    email: val('email'), phone: val('phone'), address: val('address'),
+    city: val('city'), occupation: val('occupation'),
+  };
+  const missing = [];
+  if (!body.firstName) missing.push('First Name');
+  if (!body.lastName) missing.push('Last Name');
+  if (!body.dob) missing.push('Date of Birth');
+  if (!gender) missing.push('Gender');
+  if (!body.nationality) missing.push('Nationality');
+  if (!body.idNumber) missing.push('Emirates ID / Passport No.');
+  if (!body.email) missing.push('Email Address');
+  if (!body.phone) missing.push('Mobile Number');
+  if (!body.address) missing.push('Residential Address');
+  if (!body.city) missing.push('Emirate / City');
+  if (!body.occupation) missing.push('Occupation');
+  if (missing.length) { toast('Missing: ' + missing.join(', '), 'error'); return; }
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const ok = await saveSection('personal-details', body);
+  if (ok) { appData.personalDetails = body; markDone('personal'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 2 — LIFESTYLE
+// ─────────────────────────────────────────────────
+function renderLifestyle() {
+  const lf = appData.lifestyle || {};
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#127939; Step 2 of 8</div>' +
+    '<div class="section-title">Lifestyle Factors</div>' +
+    '<div class="section-desc">Help us understand your daily habits and physical health. These factors influence your risk profile.</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#128684;</span><div><div class="card-title">Tobacco &amp; Alcohol</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Smoking Status <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('smokingGroup', ['Non-smoker','Ex-smoker','Current smoker'], lf.smokingStatus) + '</div></div>' +
+        '<div class="form-group"><label>Alcohol Consumption <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('alcoholGroup', ['None','Occasional','Moderate','Heavy'], lf.alcoholConsumption) + '</div></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#9878;&#65039;</span><div><div class="card-title">Body Measurements</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid-3">' +
+        '<div class="form-group"><label>Height (cm) <span class="req">*</span></label><input class="field" type="number" id="height" min="100" max="250" placeholder="175" value="' + escHtml(String(lf.height||'')) + '" oninput="updateBMI()"></div>' +
+        '<div class="form-group"><label>Weight (kg) <span class="req">*</span></label><input class="field" type="number" id="weight" min="30" max="300" placeholder="75" value="' + escHtml(String(lf.weight||'')) + '" oninput="updateBMI()"></div>' +
+        '<div class="form-group"><label>BMI <span class="hint-text">(auto-calculated)</span></label><input class="field" id="bmi" readonly placeholder="—" value="' + escHtml(String(lf.bmi||'')) + '"></div>' +
+      '</div>' +
+      '<div id="bmiCard"></div>' +
+    '</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#127947;</span><div><div class="card-title">Physical Activity &amp; Diet</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Exercise Frequency <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('exerciseGroup', ['Sedentary','Light (1–2×/wk)','Moderate (3–4×/wk)','Active (5+/wk)'], lf.exerciseFrequency) + '</div></div>' +
+        '<div class="form-group"><label>Diet Quality <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('dietGroup', ['Poor','Average','Good','Excellent'], lf.dietQuality) + '</div></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  actionBar('saveLifestyle()');
+
+  if (lf.height && lf.weight) updateBMI();
+}
+
+function buildBmiCard(h, w) {
+  const bmi = (w / Math.pow(h / 100, 2)).toFixed(1);
+  let cat = 'Underweight', color = '#0284c7', pct = 10;
+  if (bmi >= 18.5 && bmi < 25) { cat = 'Normal weight'; color = '#16a34a'; pct = 35; }
+  else if (bmi >= 25 && bmi < 30) { cat = 'Overweight'; color = '#d97706'; pct = 65; }
+  else if (bmi >= 30) { cat = 'Obese'; color = '#dc2626'; pct = 88; }
+  return '<div class="bmi-card" style="margin-top:16px">' +
+    '<div><div class="bmi-number" style="color:' + color + '">' + bmi + '</div></div>' +
+    '<div class="bmi-bar-wrap">' +
+      '<div class="bmi-label" style="color:' + color + '">' + cat + '</div>' +
+      '<div class="bmi-sub">Underweight &lt;18.5 &middot; Normal 18.5–24.9 &middot; Overweight 25–29.9 &middot; Obese &ge;30</div>' +
+      '<div class="bmi-bar-track"><div class="bmi-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function updateBMI() {
+  const h = parseFloat(document.getElementById('height') && document.getElementById('height').value);
+  const w = parseFloat(document.getElementById('weight') && document.getElementById('weight').value);
+  const bmiEl = document.getElementById('bmi');
+  const card = document.getElementById('bmiCard');
+  if (h > 0 && w > 0) {
+    const bmi = (w / Math.pow(h / 100, 2)).toFixed(1);
+    if (bmiEl) bmiEl.value = bmi;
+    if (card) { card.style.display = ''; card.innerHTML = buildBmiCard(h, w); }
+  } else {
+    if (bmiEl) bmiEl.value = '';
+    if (card) card.style.display = 'none';
+  }
+}
+
+async function saveLifestyle() {
+  const smoking = getPill('smokingGroup'), alcohol = getPill('alcoholGroup');
+  const exercise = getPill('exerciseGroup'), diet = getPill('dietGroup');
+  const h = val('height'), w = val('weight');
+  const missingLf = [];
+  if (!smoking) missingLf.push('Smoking Status');
+  if (!alcohol) missingLf.push('Alcohol Consumption');
+  if (!h) missingLf.push('Height');
+  if (!w) missingLf.push('Weight');
+  if (!exercise) missingLf.push('Exercise Frequency');
+  if (!diet) missingLf.push('Diet Quality');
+  if (missingLf.length) { toast('Missing: ' + missingLf.join(', '), 'error'); return; }
+  const bmi = parseFloat((parseFloat(w) / Math.pow(parseFloat(h) / 100, 2)).toFixed(1));
+  const body = { smokingStatus: smoking, alcoholConsumption: alcohol, exerciseFrequency: exercise, dietQuality: diet, height: parseFloat(h), weight: parseFloat(w), bmi };
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const ok = await saveSection('lifestyle', body);
+  if (ok) { appData.lifestyle = body; markDone('lifestyle'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 3 — FAMILY HISTORY (with search)
+// ─────────────────────────────────────────────────
+const FH_CONDITIONS = [
+  { key:'fhDiabetes',     label:'Diabetes',              sub:'Type 1 or Type 2',                  emoji:'🍬', detailKey:'fhDiabetesDetail',  detailPlaceholder:'Relation & age, e.g. Father, 48' },
+  { key:'fhHeartDisease', label:'Heart Disease',          sub:'Coronary artery / heart attack',    emoji:'❤️', detailKey:'fhHeartDetail',     detailPlaceholder:'Relation & age of onset, e.g. Father at 55' },
+  { key:'fhCancer',       label:'Cancer',                 sub:'Any type of malignancy',            emoji:'🎗️', detailKey:'fhCancerDetail',    detailPlaceholder:'Type & relation, e.g. Breast cancer, Mother' },
+  { key:'fhHypertension', label:'Hypertension',           sub:'High blood pressure',               emoji:'💉', detailKey:null },
+  { key:'fhStroke',       label:'Stroke / Neurological',  sub:'CVA, TIA, epilepsy',               emoji:'⚡', detailKey:null },
+  { key:'fhKidney',       label:'Kidney Disease',         sub:'Chronic kidney disease or failure', emoji:'🫘', detailKey:null },
+  { key:'fhMentalHealth', label:'Mental Health',          sub:'Depression, bipolar, schizophrenia',emoji:'🧠', detailKey:null },
+  { key:'fhRespiratory',  label:'Respiratory Disease',    sub:'Asthma, COPD, TB',                  emoji:'🫁', detailKey:null },
+  { key:'fhThyroid',      label:'Thyroid Disorder',       sub:'Hypothyroidism, hyperthyroidism',   emoji:'🔬', detailKey:null },
+  { key:'fhArthritis',    label:'Arthritis / Joint',      sub:'Rheumatoid, osteoarthritis',        emoji:'🦴', detailKey:null },
+  { key:'fhGastro',       label:'Gastrointestinal',       sub:'Crohn\'s, colitis, liver disease',  emoji:'🫙', detailKey:null },
+];
+
+let fhSearchQuery = '';
+
+function renderFamily() {
+  const fh = appData.familyHistory || {};
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128106; Step 3 of 8</div>' +
+    '<div class="section-title">Family History</div>' +
+    '<div class="section-desc">Hereditary conditions can affect your underwriting outcome. Toggle any condition that applies to a first-degree relative.</div>' +
+  '</div>' +
+  '<div class="alert alert-info"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> First-degree relatives only: parents, siblings, children.</div>' +
+  '<div class="card">' +
+    '<div class="card-body" style="padding-bottom:0">' +
+      '<div class="disease-search-wrap" style="margin-bottom:16px">' +
+        '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+        '<input type="text" class="disease-search" id="fhSearch" placeholder="Search conditions, e.g. Diabetes, Heart…" oninput="filterFhList()">' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-body" style="padding:0">' +
+      '<div class="toggle-card" id="fhToggleList">' +
+        renderFhToggleList(fh) +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  actionBar('saveFamily()');
+
+  restoreFhState(fh);
+}
+
+function renderFhToggleList(fh) {
+  const q = fhSearchQuery.toLowerCase();
+  return FH_CONDITIONS.filter(function(c) {
+    return !q || c.label.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q);
+  }).map(function(c) {
+    const detailHtml = c.detailKey ? (
+      '<div class="form-group" style="margin:0">' +
+        '<label style="font-size:11px;margin-bottom:4px">Relation &amp; details</label>' +
+        '<input class="field" type="text" id="' + c.detailKey + '" placeholder="' + escHtml(c.detailPlaceholder) + '" value="' + escHtml((fh && fh[c.detailKey])||'') + '">' +
+      '</div>') : '';
+    return toggleRowHtml(c.key, c.emoji + ' ' + c.label, c.sub, detailHtml);
+  }).join('') || '<div class="no-results">No conditions match your search.</div>';
+}
+
+function filterFhList() {
+  fhSearchQuery = document.getElementById('fhSearch').value;
+  const fh = appData.familyHistory || {};
+  const list = document.getElementById('fhToggleList');
+  if (list) { list.innerHTML = renderFhToggleList(fh); restoreFhState(fh); }
+}
+
+function restoreFhState(fh) {
+  FH_CONDITIONS.forEach(function(c) {
+    const el = document.getElementById(c.key);
+    if (!el) return;
+    el.checked = appData[c.key] === true || (fh && fh[c.key] === true);
+    appData[c.key] = el.checked;
+    const exp = document.getElementById('exp_' + c.key);
+    if (exp) exp.style.display = el.checked ? 'block' : 'none';
+  });
+}
+
+async function saveFamily() {
+  const body = {};
+  FH_CONDITIONS.forEach(function(c) {
+    body[c.key] = !!(document.getElementById(c.key) && document.getElementById(c.key).checked);
+    if (c.detailKey) body[c.detailKey] = val(c.detailKey);
+  });
+  body.notes = val('fhNotes');
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const ok = await saveSection('family-history', body);
+  if (ok) { appData.familyHistory = body; markDone('family'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 4 — INSURANCE & CLAIMS
+// ─────────────────────────────────────────────────
+function renderClaims() {
+  const ch = appData.claimsHistory || {};
+  const yesNoStore = function(v) { return v === true ? 'Yes' : v === false ? 'No' : ''; };
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128203; Step 4 of 8</div>' +
+    '<div class="section-title">Insurance &amp; Claims History</div>' +
+    '<div class="section-desc">Tell us about any existing health insurance policies and previous claims.</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#128737;</span><div><div class="card-title">Existing Coverage</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Do you have existing health insurance? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('existingInsGroup', ['Yes','No'], yesNoStore(ch.hasExistingInsurance)) + '</div></div>' +
+        '<div class="form-group"><label>Current insurer <span class="hint-text">(if yes)</span></label><input class="field" type="text" id="currentInsurer" placeholder="e.g. Daman, AXA, MetLife" value="' + escHtml(ch.currentInsurer||'') + '"></div>' +
+        '<div class="form-group"><label>Coverage amount (AED)</label><input class="field" type="number" id="coverageAmount" placeholder="500000" value="' + escHtml(String(ch.coverageAmount||'')) + '"></div>' +
+        '<div class="form-group"><label>Policy expiry date</label><input class="field" type="date" id="policyExpiry" value="' + escHtml(ch.policyExpiry||'') + '"></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#128202;</span><div><div class="card-title">Previous Claims (Last 3 Years)</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Have you made any claims? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('prevClaimsGroup', ['Yes','No'], yesNoStore(ch.hasPreviousClaims)) + '</div></div>' +
+        '<div class="form-group"><label>Number of claims</label><input class="field" type="number" id="claimsCount" min="0" placeholder="0" value="' + escHtml(String(ch.claimsCount||'')) + '"></div>' +
+        '<div class="form-group"><label>Total claimed amount (AED)</label><input class="field" type="number" id="claimsAmount" placeholder="0" value="' + escHtml(String(ch.claimsAmount||'')) + '"></div>' +
+        '<div class="form-group"><label>Reason for major claims</label><input class="field" type="text" id="claimsReason" placeholder="e.g. Surgery, hospitalisation" value="' + escHtml(ch.claimsReason||'') + '"></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<div class="card-header"><span class="card-icon">&#128683;</span><div><div class="card-title">Previous Declines or Loading</div></div></div>' +
+    '<div class="card-body">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Has any insurer previously declined your application? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('declinedGroup', ['Yes','No'], yesNoStore(ch.previouslyDeclined)) + '</div></div>' +
+        '<div class="form-group"><label>Has any insurer applied a premium loading? <span class="req">*</span></label><div style="margin-top:4px">' + pillGroup('loadingGroup', ['Yes','No'], yesNoStore(ch.premiumLoading)) + '</div></div>' +
+        '<div class="form-group full"><label>Please provide details <span class="hint-text">(if yes to either)</span></label><textarea class="field" id="declineDetails" placeholder="Describe the circumstances…">' + escHtml(ch.declineDetails||'') + '</textarea></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+  actionBar('saveClaims()');
+}
+
+async function saveClaims() {
+  const hasIns = getPill('existingInsGroup'), hasClaims = getPill('prevClaimsGroup');
+  const declined = getPill('declinedGroup'), loading = getPill('loadingGroup');
+  const missingCl = [];
+  if (!hasIns) missingCl.push('Existing health insurance (Yes/No)');
+  if (!hasClaims) missingCl.push('Previous claims (Yes/No)');
+  if (!declined) missingCl.push('Previously declined (Yes/No)');
+  if (!loading) missingCl.push('Premium loading (Yes/No)');
+  if (missingCl.length) { toast('Please answer: ' + missingCl.join(', '), 'error'); return; }
+  const body = {
+    hasExistingInsurance: hasIns === 'Yes', currentInsurer: val('currentInsurer'),
+    coverageAmount: parseFloat(val('coverageAmount')) || 0, policyExpiry: val('policyExpiry'),
+    hasPreviousClaims: hasClaims === 'Yes', claimsCount: parseInt(val('claimsCount')) || 0,
+    claimsAmount: parseFloat(val('claimsAmount')) || 0, claimsReason: val('claimsReason'),
+    previouslyDeclined: declined === 'Yes', premiumLoading: loading === 'Yes', declineDetails: val('declineDetails'),
+  };
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const ok = await saveSection('claims-history', body);
+  if (ok) { appData.claimsHistory = body; markDone('claims'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 5 — DISCLOSURE OF GOOD HEALTH (redesigned)
+// ─────────────────────────────────────────────────
+// Screening questions — answered with Yes/No chips
+const DISC_QUESTIONS = [
+  { key:'inGoodHealth',         label:'Are you currently in good general health?',                sub:'No known significant ongoing medical conditions',           yesGood:true },
+  { key:'recentHospitalisation',label:'Have you been hospitalised in the last 3 years?',          sub:'Inpatient stays of more than 24 hours',                    yesGood:false },
+  { key:'ongoingMedication',    label:'Are you currently on any prescribed medication?',           sub:'Regular or long-term prescriptions',                       yesGood:false },
+  { key:'upcomingSurgery',      label:'Do you have any planned surgery or procedures?',            sub:'Scheduled within the next 12 months',                      yesGood:false },
+  { key:'physicalDisability',   label:'Do you have any physical disability or impairment?',       sub:'Permanent or long-term physical limitation',               yesGood:false },
+  { key:'mentalHealthHistory',  label:'Have you ever received treatment for a mental health condition?', sub:'Psychiatric diagnosis, therapy, or medication',      yesGood:false },
+  { key:'chronicCondition',     label:'Have you been diagnosed with any chronic medical condition?', sub:'Diabetes, hypertension, heart disease, etc.',            yesGood:false },
+  { key:'substanceHistory',     label:'Have you ever been treated for substance abuse?',          sub:'Alcohol, drugs, or other substance dependency treatment',   yesGood:false },
+];
+
+let discAnswers = {};
+
+function renderDisclosure() {
+  const disc = appData.disclosures || {};
+  // Restore saved answers
+  DISC_QUESTIONS.forEach(function(q) { discAnswers[q.key] = disc[q.key] !== undefined ? (disc[q.key] ? 'Yes' : 'No') : ''; });
+
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#129658; Step 5 of 8</div>' +
+    '<div class="section-title">Disclosure of Good Health</div>' +
+    '<div class="section-desc">Answer each question honestly. Your answers are legally binding and form part of your insurance contract.</div>' +
+  '</div>' +
+  '<div class="alert alert-warning" style="margin-bottom:24px">' +
+    '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+    'Deliberate non-disclosure may invalidate your policy.' +
+  '</div>' +
+  '<div id="discQuestionsWrap">' + renderDiscQuestions(disc) + '</div>' +
+  actionBar('saveDisclosure()');
+}
+
+function renderDiscQuestions(disc) {
+  return DISC_QUESTIONS.map(function(q, idx) {
+    const ans = discAnswers[q.key] || '';
+    const isYes = ans === 'Yes';
+    const isNo = ans === 'No';
+    const needsDetail = isYes && !q.yesGood;
+    const detailFields = getDiscDetailFields(q.key, disc);
+
+    return '<div class="disc-q-card" id="dqc_' + q.key + '" style="background:#fff;border:1.5px solid ' + (ans ? (needsDetail ? 'var(--warning)' : 'var(--success)') : 'var(--border)') + ';border-radius:12px;padding:20px 24px;margin-bottom:14px;transition:border-color .15s">' +
+      '<div style="display:flex;align-items:flex-start;gap:16px">' +
+        '<div style="flex:1">' +
+          '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">' + escHtml(q.label) + '</div>' +
+          '<div style="font-size:13px;color:var(--text-muted)">' + escHtml(q.sub) + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-shrink:0;margin-top:2px">' +
+          '<button type="button" class="disc-ans-btn ' + (isYes ? 'selected-yes' : '') + '" onclick="setDiscAnswer(\'' + q.key + '\',\'Yes\')" style="padding:8px 20px;border-radius:999px;border:1.5px solid ' + (isYes ? '#16a34a' : 'var(--border)') + ';background:' + (isYes ? '#dcfce7' : '#fff') + ';color:' + (isYes ? '#16a34a' : 'var(--text-muted)') + ';font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;transition:all .12s">Yes</button>' +
+          '<button type="button" class="disc-ans-btn ' + (isNo ? 'selected-no' : '') + '" onclick="setDiscAnswer(\'' + q.key + '\',\'No\')" style="padding:8px 20px;border-radius:999px;border:1.5px solid ' + (isNo ? 'var(--primary)' : 'var(--border)') + ';background:' + (isNo ? 'var(--primary-light)' : '#fff') + ';color:' + (isNo ? 'var(--primary)' : 'var(--text-muted)') + ';font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;transition:all .12s">No</button>' +
+        '</div>' +
+      '</div>' +
+      (needsDetail && detailFields ? '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">' + detailFields + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+function getDiscDetailFields(key, disc) {
+  const d = disc || {};
+  if (key === 'ongoingMedication') return '<div class="form-group"><label style="font-size:12px;font-weight:700">List current medications &amp; dosage</label><textarea class="field" id="medicationDetails" placeholder="e.g. Metformin 500mg twice daily, Lisinopril 10mg once daily…" style="min-height:72px">' + escHtml(d.medicationDetails||'') + '</textarea></div>';
+  if (key === 'recentHospitalisation') return '<div class="form-grid"><div class="form-group"><label style="font-size:12px;font-weight:700">Reason for hospitalisation</label><input class="field" type="text" id="hospitalisationReason" placeholder="e.g. Surgery, acute illness" value="' + escHtml(d.hospitalisationReason||'') + '"></div><div class="form-group"><label style="font-size:12px;font-weight:700">Date &amp; duration</label><input class="field" type="text" id="hospitalisationDetails" placeholder="e.g. March 2023, 5 days" value="' + escHtml(d.hospitalisationDetails||'') + '"></div></div>';
+  if (key === 'upcomingSurgery') return '<div class="form-group"><label style="font-size:12px;font-weight:700">Procedure details &amp; expected date</label><input class="field" type="text" id="surgeryDetails" placeholder="e.g. Knee replacement, Q3 2025" value="' + escHtml(d.surgeryDetails||'') + '"></div>';
+  if (key === 'mentalHealthHistory') return '<div class="form-group"><label style="font-size:12px;font-weight:700">Condition &amp; treatment period</label><input class="field" type="text" id="mentalHealthDetails" placeholder="e.g. Depression, CBT therapy 2021–2022" value="' + escHtml(d.mentalHealthDetails||'') + '"></div>';
+  if (key === 'chronicCondition') return '<div class="form-group"><label style="font-size:12px;font-weight:700">Please specify the condition(s)</label><input class="field" type="text" id="chronicConditionDetails" placeholder="e.g. Type 2 Diabetes, Hypertension" value="' + escHtml(d.chronicConditionDetails||'') + '"></div>';
+  if (key === 'substanceHistory') return '<div class="form-group"><label style="font-size:12px;font-weight:700">Details &amp; treatment period</label><input class="field" type="text" id="substanceDetails" placeholder="e.g. Alcohol, rehab 2019" value="' + escHtml(d.substanceDetails||'') + '"></div>';
+  return '';
+}
+
+function setDiscAnswer(key, value) {
+  discAnswers[key] = value;
+  const disc = appData.disclosures || {};
+  const wrap = document.getElementById('discQuestionsWrap');
+  if (wrap) wrap.innerHTML = renderDiscQuestions(disc);
+}
+
+async function saveDisclosure() {
+  const unanswered = DISC_QUESTIONS.filter(function(q) { return !discAnswers[q.key]; });
+  if (unanswered.length) { toast('Please answer all questions. Unanswered: ' + unanswered.map(function(q) { return q.label.split('?')[0]; }).join('; '), 'error'); return; }
+  const body = {};
+  DISC_QUESTIONS.forEach(function(q) { body[q.key] = discAnswers[q.key] === 'Yes'; });
+  body.medicationDetails = val('medicationDetails');
+  body.hospitalisationDetails = val('hospitalisationDetails');
+  body.hospitalisationReason = val('hospitalisationReason');
+  body.surgeryDetails = val('surgeryDetails');
+  body.mentalHealthDetails = val('mentalHealthDetails');
+  body.chronicConditionDetails = val('chronicConditionDetails');
+  body.substanceDetails = val('substanceDetails');
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const ok = await saveSection('disclosures', body);
+  if (ok) { appData.disclosures = body; markDone('disclosure'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 6 — MEDICAL CONDITIONS (dashboard flow)
+// ─────────────────────────────────────────────────
+const DISEASE_EMOJIS = { d1:'🍬',d2:'❤️',d3:'🫁',d4:'🎗️',d5:'🫘',d6:'🧠',d7:'🦴',d8:'⚡',d9:'🔬',d10:'🌸',d11:'➕' };
+// Track per-disease assessment completion
+let assessmentStatus = {}; // id -> 'pending' | 'completed'
+let activeAssessmentId = null; // which disease assessment is open in modal
+
+async function renderConditions() {
+  if (!diseasesList.length) {
+    try {
+      const r = await fetch('/api/diseases');
+      const d = await r.json();
+      diseasesList = d.data || [];
+    } catch (e) { diseasesList = []; }
+  }
+  renderConditionsDashboard();
+}
+
+function renderConditionsDashboard() {
+  const hasSelected = selectedDiseases.size > 0;
+
+  const cardsHtml = diseasesList.map(function(d) {
+    const emoji = DISEASE_EMOJIS[d.id] || '💊';
+    const sel = selectedDiseases.has(d.id);
+    return '<div class="disease-card ' + (sel ? 'selected' : '') + '" id="dc_' + d.id + '" onclick="toggleDisease(\'' + d.id + '\')">' +
+      '<div class="disease-check"><svg width="11" height="11" fill="none" stroke="#fff" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+      '<span class="disease-emoji">' + emoji + '</span>' +
+      '<div class="disease-name">' + escHtml(d.name) + '</div>' +
+    '</div>';
+  }).join('');
+
+  // Selected conditions as assessment dashboard cards
+  const dashCards = Array.from(selectedDiseases).map(function(id) {
+    const d = diseasesList.find(function(x) { return x.id === id; });
+    const emoji = DISEASE_EMOJIS[id] || '💊';
+    const status = assessmentStatus[id] || 'pending';
+    const isDone = status === 'completed';
+    const statusBadge = isDone
+      ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#16a34a;background:#dcfce7;padding:3px 10px;border-radius:999px">&#10003; Completed</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#d97706;background:#fef3c7;padding:3px 10px;border-radius:999px">&#9888; Assessment Pending</span>';
+    const btnLabel = isDone ? '&#9998; Edit Assessment' : '&#9654; Start Assessment';
+    const btnStyle = isDone
+      ? 'background:var(--bg);border:1.5px solid var(--border);color:var(--text-muted)'
+      : 'background:var(--primary);border:1.5px solid var(--primary);color:#fff;box-shadow:0 2px 8px rgba(26,86,219,.25)';
+    return '<div style="display:flex;align-items:center;gap:16px;padding:18px 20px;background:#fff;border:1.5px solid ' + (isDone ? '#86efac' : 'var(--border)') + ';border-radius:14px;margin-bottom:12px">' +
+      '<div style="font-size:28px;line-height:1">' + emoji + '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">' + escHtml(d ? d.name : id) + '</div>' +
+        statusBadge +
+      '</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button onclick="openAssessment(\'' + id + '\')" style="' + btnStyle + ';padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + btnLabel + '</button>' +
+        '<button onclick="removeCondition(\'' + id + '\')" style="background:none;border:1.5px solid var(--border);color:var(--text-muted);padding:9px 12px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit" title="Remove">&times;</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128138; Step 6 of 8</div>' +
+    '<div class="section-title">Medical Conditions</div>' +
+    '<div class="section-desc">Select your diagnosed conditions below, then complete a short assessment for each one.</div>' +
+  '</div>' +
+
+  // Condition picker
+  '<div class="card" style="margin-bottom:20px">' +
+    '<div class="card-header" style="cursor:pointer" onclick="toggleConditionPicker()">' +
+      '<span class="card-icon">&#128269;</span>' +
+      '<div style="flex:1"><div class="card-title">Add a Medical Condition</div><div class="card-desc">Search or select from the library</div></div>' +
+      '<svg id="pickerChevron" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="transition:transform .2s"><polyline points="6 9 12 15 18 9"/></svg>' +
+    '</div>' +
+    '<div id="conditionPickerBody" class="card-body">' +
+      '<div class="disease-search-wrap" style="margin-bottom:16px">' +
+        '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+        '<input type="text" class="disease-search" id="diseaseSearch" placeholder="Search conditions, e.g. Diabetes, Heart…" oninput="filterDiseases()">' +
+      '</div>' +
+      '<div class="disease-grid" id="diseaseGrid">' + cardsHtml + '</div>' +
+      '<div class="no-results" id="noResults" style="display:none">No conditions match your search.</div>' +
+    '</div>' +
+  '</div>' +
+
+  // Dashboard
+  '<div id="conditionDashboard">' +
+    (hasSelected
+      ? '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:12px">Your Conditions — Complete Each Assessment</div>' + dashCards
+      : '<div style="text-align:center;padding:32px;background:#fff;border:1.5px dashed var(--border-mid);border-radius:14px;color:var(--text-muted)"><div style="font-size:32px;margin-bottom:8px">🩺</div><div style="font-size:14px;font-weight:600">No conditions added yet</div><div style="font-size:13px;margin-top:4px">Select conditions from the library above</div></div>'
+    ) +
+  '</div>' +
+
+  actionBar('saveConditions()');
+
+  // Assessment modal (hidden initially)
+  if (!document.getElementById('assessmentModal')) {
+    const modal = document.createElement('div');
+    modal.id = 'assessmentModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.45);backdrop-filter:blur(3px)';
+    modal.innerHTML = '<div id="assessmentPanel" style="position:absolute;right:0;top:0;bottom:0;width:min(620px,100vw);background:#fff;box-shadow:-8px 0 40px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden">' +
+      '<div id="assessmentHeader" style="padding:24px 28px 20px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:12px">' +
+        '<div id="assessmentIcon" style="font-size:28px"></div>' +
+        '<div style="flex:1"><div id="assessmentTitle" style="font-size:18px;font-weight:800;color:var(--text)"></div><div id="assessmentSub" style="font-size:13px;color:var(--text-muted);margin-top:2px">Condition-specific health assessment</div></div>' +
+        '<button onclick="closeAssessment()" style="background:var(--bg);border:1.5px solid var(--border);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-muted)">&times;</button>' +
+      '</div>' +
+      '<div id="assessmentBody" style="flex:1;overflow-y:auto;padding:28px"></div>' +
+      '<div style="padding:20px 28px;border-top:1px solid var(--border);background:#fff;flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">' +
+        '<button onclick="closeAssessment()" style="padding:10px 20px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--text-muted);font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>' +
+        '<button onclick="saveAssessment()" style="padding:10px 24px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(26,86,219,.3)">&#10003; Save Assessment</button>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+}
+
+let pickerOpen = true;
+function toggleConditionPicker() {
+  pickerOpen = !pickerOpen;
+  const body = document.getElementById('conditionPickerBody');
+  const chev = document.getElementById('pickerChevron');
+  if (body) body.style.display = pickerOpen ? '' : 'none';
+  if (chev) chev.style.transform = pickerOpen ? '' : 'rotate(-90deg)';
+}
+
+function filterDiseases() {
+  const q = (document.getElementById('diseaseSearch') && document.getElementById('diseaseSearch').value.toLowerCase()) || '';
+  let count = 0;
+  diseasesList.forEach(function(d) {
+    const card = document.getElementById('dc_' + d.id);
+    if (!card) return;
+    const match = !q || d.name.toLowerCase().includes(q) || (d.description||'').toLowerCase().includes(q);
+    card.classList.toggle('hidden', !match);
+    if (match) count++;
+  });
+  const noR = document.getElementById('noResults');
+  if (noR) noR.style.display = (diseasesList.length && count === 0) ? '' : 'none';
+}
+
+function toggleDisease(id) {
+  if (selectedDiseases.has(id)) {
+    selectedDiseases.delete(id);
+    delete assessmentStatus[id];
+  } else {
+    selectedDiseases.add(id);
+    if (!assessmentStatus[id]) assessmentStatus[id] = 'pending';
+  }
+  renderConditionsDashboard();
+  // Re-attach picker state
+  if (!pickerOpen) { const b = document.getElementById('conditionPickerBody'); if (b) b.style.display = 'none'; }
+}
+
+function removeCondition(id) {
+  selectedDiseases.delete(id);
+  delete assessmentStatus[id];
+  renderConditionsDashboard();
+}
+
+// ── Assessment modal ──────────────────────────────
+async function openAssessment(id) {
+  activeAssessmentId = id;
+  if (!questionsData[id]) {
+    try {
+      const r = await fetch('/api/questions?diseaseId=' + id);
+      const d = await r.json();
+      questionsData[id] = d.data || [];
+    } catch (e) { questionsData[id] = []; }
+  }
+  const disease = diseasesList.find(function(x) { return x.id === id; });
+  const emoji = DISEASE_EMOJIS[id] || '💊';
+  document.getElementById('assessmentIcon').textContent = emoji;
+  document.getElementById('assessmentTitle').textContent = disease ? disease.name : id;
+  document.getElementById('assessmentBody').innerHTML = buildAssessmentForm(id);
+  document.getElementById('assessmentModal').style.display = '';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeAssessment() {
+  document.getElementById('assessmentModal').style.display = 'none';
+  document.body.style.overflow = '';
+  activeAssessmentId = null;
+}
+
+function buildAssessmentForm(id) {
+  const qs = questionsData[id] || [];
+  if (!qs.length) {
+    return '<div style="text-align:center;padding:40px 0">' +
+      '<div style="font-size:40px;margin-bottom:12px">✅</div>' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:6px">No additional questions required</div>' +
+      '<div style="font-size:13px;color:var(--text-muted)">This condition has been added to your profile. Click "Save Assessment" to confirm.</div>' +
+    '</div>';
+  }
+
+  return qs.map(function(q, idx) {
+    const key = id + '_' + q.id;
+    const stored = questionAnswers[key] !== undefined ? questionAnswers[key] : '';
+    // Normalise type to lowercase for easy comparison
+    const qtype = (q.type || '').toLowerCase().replace('_', '');
+    // isMulti: MULTI_SELECT type
+    const isMulti = qtype === 'multiselect' || qtype === 'multi_select';
+    const opts = q.options || [];
+
+    const label = '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">' +
+      '<span style="display:inline-flex;width:24px;height:24px;background:var(--primary-light);color:var(--primary);border-radius:50%;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:1px">' + (idx+1) + '</span>' +
+      '<div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4">' + escHtml(q.text) + '</div>' +
+    '</div>';
+
+    const wrap = function(inner) {
+      return '<div style="margin-bottom:0;padding:20px 24px;border-bottom:1px solid var(--border)">' + label + inner + '</div>';
+    };
+
+    // NUMBER
+    if (qtype === 'number') {
+      return wrap('<input class="field" type="number" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Enter a number…" style="max-width:200px" oninput="questionAnswers[\'' + key + '\']=this.value">');
+    }
+    // DATE
+    if (qtype === 'date') {
+      return wrap('<input class="field" type="date" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" style="max-width:220px" onchange="questionAnswers[\'' + key + '\']=this.value">');
+    }
+    // TEXT
+    if (qtype === 'text') {
+      return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value">');
+    }
+    // YES_NO — two big radio-style buttons
+    if (qtype === 'yesno' || qtype === 'yes_no' || qtype === 'boolean') {
+      const isY = stored === 'Yes', isN = stored === 'No';
+      return wrap(
+        '<div style="display:flex;gap:10px">' +
+          chipBtn(key, 'Yes', isY, false) +
+          chipBtn(key, 'No', isN, false) +
+        '</div>'
+      );
+    }
+    // DROPDOWN — render as single-select chips (friendlier than a <select>)
+    if (qtype === 'dropdown' || qtype === 'select') {
+      if (!opts.length) return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value">');
+      const optHtml = opts.map(function(o) { return chipBtn(key, o, stored === o, false); }).join('');
+      return wrap('<div id="qg_' + key + '" style="display:flex;flex-wrap:wrap;gap:8px">' + optHtml + '</div>');
+    }
+    // MULTI_SELECT
+    if (isMulti) {
+      const storedArr = Array.isArray(stored) ? stored : (stored ? stored.split(', ') : []);
+      const optHtml = opts.map(function(o) { return chipBtn(key, o, storedArr.includes(o), true); }).join('');
+      return wrap(
+        '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em">Select all that apply</div>' +
+        '<div id="qg_' + key + '" style="display:flex;flex-wrap:wrap;gap:8px">' + optHtml + '</div>'
+      );
+    }
+    // Fallback: treat as text
+    return wrap('<input class="field" type="text" id="qa_' + key + '" value="' + escHtml(String(stored)) + '" placeholder="Type your answer…" oninput="questionAnswers[\'' + key + '\']=this.value">');
+  }).join('');
+}
+
+function chipBtn(key, value, isSelected, isMulti) {
+  const sel = isSelected;
+  return '<button type="button" ' +
+    'onclick="selectAssessmentAnswer(\'' + key + '\',\'' + value.replace(/'/g, "\\'") + '\',' + isMulti + ',this)" ' +
+    'style="padding:10px 20px;border-radius:999px;border:1.5px solid ' + (sel ? 'var(--primary)' : 'var(--border)') + ';' +
+    'background:' + (sel ? 'var(--primary-light)' : '#fff') + ';' +
+    'color:' + (sel ? 'var(--primary)' : 'var(--text-muted)') + ';' +
+    'font-weight:' + (sel ? '700' : '500') + ';' +
+    'font-size:13px;cursor:pointer;font-family:inherit;transition:all .12s">' +
+    escHtml(value) +
+  '</button>';
+}
+
+function selectAssessmentAnswer(key, value, isMulti, btn) {
+  if (isMulti) {
+    const stored = Array.isArray(questionAnswers[key]) ? questionAnswers[key] : [];
+    const idx = stored.indexOf(value);
+    if (idx > -1) stored.splice(idx, 1); else stored.push(value);
+    questionAnswers[key] = stored;
+    btn.style.borderColor = stored.includes(value) ? 'var(--primary)' : 'var(--border)';
+    btn.style.background = stored.includes(value) ? 'var(--primary-light)' : '#fff';
+    btn.style.color = stored.includes(value) ? 'var(--primary)' : 'var(--text-muted)';
+    btn.style.fontWeight = stored.includes(value) ? '700' : '500';
+  } else {
+    questionAnswers[key] = value;
+    const group = document.getElementById('qg_' + key);
+    if (group) group.querySelectorAll('.ans-chip-lg').forEach(function(b) {
+      const isThis = b.textContent.trim() === value;
+      b.style.borderColor = isThis ? 'var(--primary)' : 'var(--border)';
+      b.style.background = isThis ? 'var(--primary-light)' : '#fff';
+      b.style.color = isThis ? 'var(--primary)' : 'var(--text-muted)';
+      b.style.fontWeight = isThis ? '700' : '500';
+    });
+  }
+}
+
+function saveAssessment() {
+  const id = activeAssessmentId;
+  if (!id) return;
+  assessmentStatus[id] = 'completed';
+  closeAssessment();
+  renderConditionsDashboard();
+}
+
+async function saveConditions() {
+  const btn = document.getElementById('nextBtn');
+  const pendingAssessments = Array.from(selectedDiseases).filter(function(id) { return assessmentStatus[id] !== 'completed'; });
+  if (selectedDiseases.size > 0 && pendingAssessments.length) {
+    const names = pendingAssessments.map(function(id) { const d = diseasesList.find(function(x) { return x.id === id; }); return d ? d.name : id; });
+    toast('Please complete assessments for: ' + names.join(', '), 'error'); return;
+  }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const diseasesArr = Array.from(selectedDiseases).map(function(id) { return { id: id, answered: true }; });
+  const answers = Object.entries(questionAnswers).map(function(entry) {
+    const k = entry[0], v = entry[1];
+    const parts = k.split('_');
+    return { diseaseId: parts[0], questionId: parts[1], answer: Array.isArray(v) ? v.join(', ') : v };
+  });
+  const ok = await saveSection('answers', { diseases: diseasesArr, answers: answers });
+  if (ok) { markDone('conditions'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 7 — DOCUMENTS
+// ─────────────────────────────────────────────────
+function renderDocuments() {
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#128206; Step 7 of 8</div>' +
+    '<div class="section-title">Document Upload</div>' +
+    '<div class="section-desc">Upload supporting documents. All files are encrypted and used only for underwriting assessment.</div>' +
+  '</div>' +
+  '<div class="alert alert-info"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Accepted: PDF, JPG, PNG. Max 10 MB per file. At least one identity document is required.</div>' +
+  '<div class="doc-grid">' +
+    docSectionHtml('identity','&#128266;','Identity Document','Emirates ID, Passport', true) +
+    docSectionHtml('medical','&#127973;','Medical Reports','Test results, prescriptions', false) +
+    docSectionHtml('insurance','&#128196;','Insurance Documents','Previous policy, claim letters', false) +
+  '</div>' +
+  actionBar('saveDocuments()');
+
+  renderFileLists();
+}
+
+function docSectionHtml(type, icon, title, hint, required) {
+  return '<div class="doc-section">' +
+    '<div class="doc-section-header"><span style="font-size:18px">' + icon + '</span><span class="doc-section-title">' + title + (required ? ' <span style="color:var(--danger)">*</span>' : '') + '</span><span class="doc-count" id="cnt_' + type + '">0</span></div>' +
+    '<div class="drop-zone" id="dz_' + type + '" onclick="triggerUpload(\'' + type + '\')" ondragover="event.preventDefault();this.classList.add(\'dragging\')" ondragleave="this.classList.remove(\'dragging\')" ondrop="onDrop(event,\'' + type + '\')">' +
+      '<div class="drop-icon">&#9729;&#65039;</div>' +
+      '<div class="drop-label">Click to upload</div>' +
+      '<div class="drop-sub">' + hint + ' &middot; PDF, JPG, PNG</div>' +
+    '</div>' +
+    '<input type="file" id="fu_' + type + '" style="display:none" accept=".pdf,.jpg,.jpeg,.png" multiple onchange="onFileChange(event,\'' + type + '\')">' +
+    '<div class="file-list" id="fl_' + type + '"></div>' +
+  '</div>';
+}
+
+function triggerUpload(type) { const el = document.getElementById('fu_' + type); if (el) el.click(); }
+
+function onDrop(e, type) {
+  e.preventDefault();
+  const dz = document.getElementById('dz_' + type);
+  if (dz) dz.classList.remove('dragging');
+  handleFiles(Array.from(e.dataTransfer.files), type);
+}
+
+function onFileChange(e, type) { handleFiles(Array.from(e.target.files), type); }
+
+function handleFiles(files, type) {
+  files.forEach(function(f) {
+    if (f.size > 10 * 1024 * 1024) { toast(f.name + ' exceeds 10 MB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = function() {
+      documents[type].push({ name: f.name, size: f.size, data: reader.result, mime: f.type });
+      renderFileLists();
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+function removeFile(type, idx) {
+  documents[type].splice(idx, 1);
+  renderFileLists();
+}
+
+function renderFileLists() {
+  ['identity','medical','insurance'].forEach(function(type) {
+    const fl = document.getElementById('fl_' + type);
+    const cnt = document.getElementById('cnt_' + type);
+    if (cnt) cnt.textContent = documents[type].length;
+    if (!fl) return;
+    fl.innerHTML = documents[type].map(function(f, i) {
+      return '<div class="file-item">' +
+        '<span style="font-size:16px">' + (f.mime && f.mime.includes('pdf') ? '&#128196;' : '&#128247;') + '</span>' +
+        '<span class="file-name" title="' + escHtml(f.name) + '">' + escHtml(f.name) + '</span>' +
+        '<span style="font-size:11px;color:var(--text-light)">' + (f.size/1024).toFixed(0) + ' KB</span>' +
+        '<span class="file-remove" onclick="removeFile(\'' + type + '\',' + i + ')">&times;</span>' +
+      '</div>';
+    }).join('');
+  });
+}
+
+async function saveDocuments() {
+  if (!documents.identity.length) { toast('Please upload at least one identity document', 'error'); return; }
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  const allFiles = [
+    ...documents.identity.map(function(f) { return Object.assign({}, f, { category: 'identity' }); }),
+    ...documents.medical.map(function(f) { return Object.assign({}, f, { category: 'medical' }); }),
+    ...documents.insurance.map(function(f) { return Object.assign({}, f, { category: 'insurance' }); }),
+  ];
+  const ok = await saveSection('documents', { documents: allFiles.map(function(f) { return { name: f.name, category: f.category, data: f.data, mimeType: f.mime }; }) });
+  if (ok) { markDone('documents'); nextSection(); }
+  else resetNextBtn();
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 8 — REVIEW & SUBMIT
+// ─────────────────────────────────────────────────
+function renderReview() {
+  const pd = appData.personalDetails || {};
+  const lf = appData.lifestyle || {};
+  const ch = appData.claimsHistory || {};
+
+  const missingDone = SECTIONS.slice(0, 7).filter(function(s) { return !completed.has(s.id); });
+  const missingWarn = missingDone.length ? '<div class="alert alert-warning"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><div><strong>Incomplete sections:</strong> ' + missingDone.map(function(s) { return s.label; }).join(', ') + '. Please complete them before submitting.</div></div>' : '';
+
+  const selectedDiseaseNames = Array.from(selectedDiseases).map(function(id) {
+    const d = diseasesList.find(function(x) { return x.id === id; });
+    return d ? (DISEASE_EMOJIS[id]||'💊') + ' ' + d.name : id;
+  }).join(' &middot; ') || '&#8212;';
+
+  const docSummary = Object.entries(documents).map(function(entry) {
+    return entry[1].length ? '<strong>' + entry[0] + ':</strong> ' + entry[1].length + ' file(s)' : '';
+  }).filter(Boolean).join(' &middot; ') || 'No documents uploaded';
+
+  document.getElementById('mainContent').innerHTML =
+  '<div class="section-header">' +
+    '<div class="section-eyebrow">&#9989; Step 8 of 8</div>' +
+    '<div class="section-title">Review &amp; Submit</div>' +
+    '<div class="section-desc">Review your application below. Click Edit to make changes, then submit when ready.</div>' +
+  '</div>' +
+  missingWarn +
+  '<div class="review-card">' +
+    '<div class="review-card-header"><div class="review-card-title">&#128100; Personal Information</div><button class="review-edit-btn" onclick="navigateTo(\'personal\')">Edit</button></div>' +
+    '<div class="review-kv-grid">' +
+      kvHtml('Full Name', pd.firstName && pd.lastName ? pd.firstName + ' ' + pd.lastName : '&#8212;') +
+      kvHtml('Date of Birth', pd.dob || '&#8212;') +
+      kvHtml('Gender', pd.gender || '&#8212;') +
+      kvHtml('Nationality', pd.nationality || '&#8212;') +
+      kvHtml('Email', pd.email || '&#8212;') +
+      kvHtml('Mobile', pd.phone || '&#8212;') +
+    '</div>' +
+  '</div>' +
+  '<div class="review-card">' +
+    '<div class="review-card-header"><div class="review-card-title">&#127939; Lifestyle Factors</div><button class="review-edit-btn" onclick="navigateTo(\'lifestyle\')">Edit</button></div>' +
+    '<div class="review-kv-grid">' +
+      kvHtml('Smoking', lf.smokingStatus || '&#8212;') +
+      kvHtml('Alcohol', lf.alcoholConsumption || '&#8212;') +
+      kvHtml('BMI', lf.bmi ? lf.bmi + ' (' + lf.height + 'cm / ' + lf.weight + 'kg)' : '&#8212;') +
+      kvHtml('Exercise', lf.exerciseFrequency || '&#8212;') +
+    '</div>' +
+  '</div>' +
+  '<div class="review-card">' +
+    '<div class="review-card-header"><div class="review-card-title">&#128138; Medical Conditions</div><button class="review-edit-btn" onclick="navigateTo(\'conditions\')">Edit</button></div>' +
+    '<div style="padding:14px 20px;font-size:13px;color:' + (selectedDiseases.size ? 'var(--text)' : 'var(--text-muted)') + '">' + selectedDiseaseNames + '</div>' +
+  '</div>' +
+  '<div class="review-card">' +
+    '<div class="review-card-header"><div class="review-card-title">&#128206; Documents</div><button class="review-edit-btn" onclick="navigateTo(\'documents\')">Edit</button></div>' +
+    '<div style="padding:14px 20px;font-size:13px;color:var(--text-muted)">' + docSummary + '</div>' +
+  '</div>' +
+  '<div class="consent-block">' +
+    '<div class="consent-item"><input type="checkbox" id="consentTruth"><div class="consent-text">I confirm that all information provided in this application is true, accurate and complete to the best of my knowledge. I understand that providing false or misleading information may result in my policy being voided.</div></div>' +
+    '<div class="consent-item"><input type="checkbox" id="consentPrivacy"><div class="consent-text">I consent to Daman Health processing my personal and medical data for the purpose of underwriting assessment, in accordance with the UAE Federal Data Protection Law.</div></div>' +
+    '<div class="consent-item"><input type="checkbox" id="consentContact"><div class="consent-text">I agree to be contacted by Daman\'s underwriting team regarding my application, by phone or email, as necessary.</div></div>' +
+  '</div>' +
+  actionBar('submitApplication()', '&#128640; Submit Application');
+}
+
+function kvHtml(label, value) {
+  return '<div class="review-kv"><div class="review-kv-label">' + label + '</div><div class="review-kv-val">' + value + '</div></div>';
+}
+
+async function submitApplication() {
+  const missingDone = SECTIONS.slice(0, 7).filter(function(s) { return !completed.has(s.id); });
+  if (missingDone.length) {
+    toast('Please save these sections first: ' + missingDone.map(function(s) { return s.label; }).join(', '), 'error');
+    return;
+  }
+  const c1 = document.getElementById('consentTruth'), c2 = document.getElementById('consentPrivacy'), c3 = document.getElementById('consentContact');
+  if (!c1 || !c1.checked) { toast('Please tick: Declaration of truth (checkbox 1)', 'error'); return; }
+  if (!c2 || !c2.checked) { toast('Please tick: Privacy data consent (checkbox 2)', 'error'); return; }
+  if (!c3 || !c3.checked) { toast('Please tick: Contact consent (checkbox 3)', 'error'); return; }
+
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = '⏳ Submitting…';
+  try {
+    const res = await fetch('/api/applications/' + appId + '/submit', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      sessionStorage.setItem('appResult', JSON.stringify(data.data));
+      window.location.href = '/customer/confirmation.html';
+    } else {
+      toast(data.error || 'Submission failed. Please try again.', 'error');
+      btn.disabled = false; btn.textContent = '\uD83D\DE80 Submit Application';
+    }
+  } catch (e) {
+    toast('Network error. Please check your connection and try again.', 'error');
+    btn.disabled = false; btn.textContent = '\uD83D\DE80 Submit Application';
+  }
+}
+
+// ─────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────
+async function init() {
+  // If no appId at all, auto-create one so user can start immediately
+  if (!appId) {
+    try {
+      const create = await fetch('/api/applications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const created = await create.json();
+      if (created.success) {
+        appId = created.data.id;
+        sessionStorage.setItem('appId', appId);
+      }
+    } catch (e) {
+      document.getElementById('mainContent').innerHTML =
+        '<div class="empty-state" style="margin-top:80px">' +
+        '<div class="empty-icon">&#9888;&#65039;</div>' +
+        '<div class="empty-title">Cannot reach the server</div>' +
+        '<div class="empty-desc">Make sure the server is running on port 3000, then <a href="" onclick="location.reload()" style="color:var(--primary);font-weight:600">reload this page</a>.</div>' +
+        '</div>';
+      renderNav();
+      return;
+    }
+  }
+
+  document.getElementById('topbarAppId').textContent = 'App ID: ' + appId.slice(0, 8) + '…';
+
+  try {
+    const res = await fetch('/api/applications/' + appId);
+    if (res.status === 404) {
+      // Server was restarted — old appId is gone. Create a fresh application silently.
+      const create = await fetch('/api/applications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const created = await create.json();
+      if (created.success) {
+        appId = created.data.id;
+        sessionStorage.setItem('appId', appId);
+        document.getElementById('topbarAppId').textContent = 'App ID: ' + appId.slice(0, 8) + '…';
+      }
+      renderNav();
+      renderSection();
+      return;
+    }
+    const data = await res.json();
+    if (data.success && data.data) {
+      const app = data.data;
+      if (app.personalDetails && app.personalDetails.firstName) { appData.personalDetails = app.personalDetails; completed.add('personal'); }
+      if (app.lifestyle && app.lifestyle.smokingStatus) { appData.lifestyle = app.lifestyle; completed.add('lifestyle'); }
+      if (app.familyHistory) { appData.familyHistory = app.familyHistory; Object.assign(appData, app.familyHistory); completed.add('family'); }
+      if (app.claimsHistory) { appData.claimsHistory = app.claimsHistory; completed.add('claims'); }
+      if (app.disclosures) { appData.disclosures = app.disclosures; Object.assign(appData, app.disclosures); completed.add('disclosure'); }
+      if (app.answers && app.answers.length) {
+        const dIds = Array.from(new Set(app.answers.map(function(a) { return a.diseaseId; })));
+        dIds.forEach(function(id) { selectedDiseases.add(id); });
+        app.answers.forEach(function(a) { questionAnswers[a.diseaseId + '_' + a.questionId] = a.answer; });
+        completed.add('conditions');
+      } else if (app.diseases && app.diseases.length) {
+        app.diseases.forEach(function(d) { selectedDiseases.add(d.id); });
+        completed.add('conditions');
+      }
+      if (app.documents && app.documents.length) {
+        app.documents.forEach(function(d) { if (documents[d.category]) documents[d.category].push(d); });
+        completed.add('documents');
+      }
+      const firstIncomplete = SECTIONS.find(function(s) { return !completed.has(s.id); });
+      if (firstIncomplete) currentSection = firstIncomplete.id;
+    }
+  } catch (e) { /* network issue — start fresh UI anyway */ }
+
+  renderNav();
+  renderSection();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — Daman UW</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-subtitle">Real-time underwriting overview</div>
+        </div>
+        <a href="/customer/index.html" target="_blank" class="btn btn-secondary">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Customer Portal
+        </a>
+      </div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-label">Total Applications</div><div class="stat-value" id="s-total">—</div></div>
+        <div class="stat-card accent-blue"><div class="stat-label">Accepted</div><div class="stat-value" id="s-accepted">—</div></div>
+        <div class="stat-card accent-amber"><div class="stat-label">Referred</div><div class="stat-value" id="s-referred">—</div></div>
+        <div class="stat-card accent-red"><div class="stat-label">Declined</div><div class="stat-value" id="s-declined">—</div></div>
+        <div class="stat-card"><div class="stat-label">Pending Review</div><div class="stat-value" id="s-pending">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Recent Applications</span>
+          <a href="/admin/applications.html" class="btn btn-sm btn-secondary">View all</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Reference</th><th>Applicant</th><th>Submitted</th><th>Risk Score</th><th>Status</th><th>Decision</th>
+            </tr></thead>
+            <tbody id="recentTable"><tr><td colspan="6" class="text-muted" style="padding:24px;text-align:center">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Dashboard');
+
+apiFetch('/admin/dashboard').then(r => {
+  if (!r?.success) return;
+  const d = r.data;
+  document.getElementById('s-total').textContent    = d.total;
+  document.getElementById('s-accepted').textContent = d.accepted;
+  document.getElementById('s-referred').textContent = d.referred;
+  document.getElementById('s-declined').textContent = d.declined;
+  document.getElementById('s-pending').textContent  = d.pending;
+
+  const tbody = document.getElementById('recentTable');
+  if (!d.recent.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty"><p>No applications yet</p><small>Submit an application via the Customer Portal to see it here.</small></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = d.recent.map(a => `
+    <tr>
+      <td><a href="/admin/applications.html?id=${a.id}" class="font-mono" style="color:var(--primary)">${a.referenceNumber}</a></td>
+      <td>${a.personalDetails?.fullName || '—'}</td>
+      <td>${formatDate(a.submittedAt)}</td>
+      <td>${a.riskScore !== null ? `<span style="font-weight:600">${a.riskScore}</span>` : '—'}</td>
+      <td>${badge(a.status)}</td>
+      <td>${a.decision ? badge(a.decision) : '—'}</td>
+    </tr>`).join('');
+});
+</script>
+</body>
+</html>

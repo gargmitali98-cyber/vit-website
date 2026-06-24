@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Questionnaire Builder — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.qb-layout{display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start}
+.disease-list{display:flex;flex-direction:column;gap:6px}
+.disease-btn{padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;font-weight:500;background:var(--surface);text-align:left;transition:all .12s;display:flex;align-items:center;justify-content:space-between}
+.disease-btn:hover,.disease-btn.active{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+.disease-btn .count{font-size:11px;background:var(--bg);padding:2px 7px;border-radius:999px;font-weight:600}
+.disease-btn.active .count{background:var(--primary);color:#fff}
+.q-item{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);transition:background .1s}
+.q-item:hover{background:var(--bg)}
+.q-drag{cursor:grab;color:var(--text-light);padding-top:2px}
+.q-body{flex:1}
+.q-text{font-size:13px;font-weight:500;margin-bottom:4px}
+.q-meta{font-size:11px;color:var(--text-muted);display:flex;gap:10px}
+.q-actions{display:flex;gap:4px;flex-shrink:0}
+.answer-type-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;background:var(--info-bg);color:var(--info)}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Questionnaire Builder</div>
+          <div class="page-subtitle">Configure dynamic questions per disease</div>
+        </div>
+      </div>
+      <div class="qb-layout">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Diseases</span></div>
+          <div class="card-body" id="diseaseList" style="padding:12px"><div class="text-muted text-sm">Loading…</div></div>
+        </div>
+        <div class="card" id="questionsPanel">
+          <div class="card-header">
+            <span class="card-title" id="qPanelTitle">Select a disease</span>
+            <button class="btn btn-sm btn-primary" id="addQBtn" style="display:none" onclick="openAddQ()">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Question
+            </button>
+          </div>
+          <div id="questionsList">
+            <div class="empty"><p>Select a disease</p><small>Choose a disease from the left to view and manage its questions.</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Question Modal -->
+<div class="modal-overlay" id="qModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="qModalTitle">Add Question</span>
+      <button class="btn-ghost" onclick="closeModal('qModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="qEditId">
+      <div class="form-group">
+        <label>Question Text <span class="required">*</span></label>
+        <input class="input" type="text" id="qText" placeholder="e.g. Year diagnosed">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Answer Type <span class="required">*</span></label>
+          <select class="select" id="qType" onchange="toggleOptions()">
+            <option value="TEXT">Text</option>
+            <option value="NUMBER">Number</option>
+            <option value="YES_NO">Yes / No</option>
+            <option value="DATE">Date</option>
+            <option value="DROPDOWN">Dropdown</option>
+            <option value="MULTI_SELECT">Multi-select</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="optionsGroup" style="display:none">
+        <label>Options <span class="required">*</span></label>
+        <textarea class="textarea" id="qOptions" placeholder="One option per line e.g.&#10;Option A&#10;Option B&#10;Option C" rows="4"></textarea>
+        <div class="text-muted text-sm" style="margin-top:4px">Enter one option per line</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('qModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveQuestion()">Save Question</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Questionnaire Builder');
+
+let diseases = [], selectedDiseaseId = null, questions = [];
+
+async function loadDiseases() {
+  const r = await apiFetch('/admin/diseases');
+  diseases = (r.data || []).filter(d => d.isActive);
+  renderDiseaseList();
+}
+
+async function selectDisease(id) {
+  selectedDiseaseId = id;
+  renderDiseaseList();
+  document.getElementById('addQBtn').style.display = 'inline-flex';
+  const d = diseases.find(x => x.id === id);
+  document.getElementById('qPanelTitle').textContent = d ? d.name : 'Questions';
+  const r = await apiFetch(`/admin/diseases/${id}/questions`);
+  questions = r.data || [];
+  renderQuestions();
+}
+
+function renderDiseaseList() {
+  const el = document.getElementById('diseaseList');
+  el.innerHTML = diseases.map(d => {
+    const cnt = questions.filter ? '' : ''; // lazy: shown after load
+    return `<button class="disease-btn ${d.id === selectedDiseaseId ? 'active' : ''}" onclick="selectDisease('${d.id}')">${d.name}</button>`;
+  }).join('') || '<div class="text-muted text-sm">No diseases found</div>';
+}
+
+function renderQuestions() {
+  const el = document.getElementById('questionsList');
+  if (!questions.length) {
+    el.innerHTML = `<div class="empty"><p>No questions yet</p><small>Click "Add Question" to build the questionnaire for this disease.</small></div>`;
+    return;
+  }
+  el.innerHTML = questions.map((q, i) => `
+    <div class="q-item">
+      <div class="q-drag">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      </div>
+      <div class="q-body">
+        <div class="q-text">${i + 1}. ${q.text}</div>
+        <div class="q-meta">
+          <span class="answer-type-badge">${q.answerType.replace('_',' ')}</span>
+          ${q.options.length ? `<span>${q.options.length} options</span>` : ''}
+        </div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-sm btn-secondary" onclick="editQ('${q.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteQ('${q.id}')">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+function toggleOptions() {
+  const type = document.getElementById('qType').value;
+  document.getElementById('optionsGroup').style.display = ['DROPDOWN','MULTI_SELECT'].includes(type) ? 'block' : 'none';
+}
+
+function openAddQ() {
+  document.getElementById('qEditId').value = '';
+  document.getElementById('qText').value = '';
+  document.getElementById('qType').value = 'TEXT';
+  document.getElementById('qOptions').value = '';
+  document.getElementById('qModalTitle').textContent = 'Add Question';
+  toggleOptions();
+  openModal('qModal');
+}
+
+function editQ(id) {
+  const q = questions.find(x => x.id === id);
+  if (!q) return;
+  document.getElementById('qEditId').value = q.id;
+  document.getElementById('qText').value = q.text;
+  document.getElementById('qType').value = q.answerType;
+  document.getElementById('qOptions').value = (q.options || []).join('\n');
+  document.getElementById('qModalTitle').textContent = 'Edit Question';
+  toggleOptions();
+  openModal('qModal');
+}
+
+async function saveQuestion() {
+  const id = document.getElementById('qEditId').value;
+  const type = document.getElementById('qType').value;
+  const optionsRaw = document.getElementById('qOptions').value;
+  const body = {
+    text: document.getElementById('qText').value.trim(),
+    answerType: type,
+    options: ['DROPDOWN','MULTI_SELECT'].includes(type)
+      ? optionsRaw.split('\n').map(s => s.trim()).filter(Boolean)
+      : [],
+  };
+  if (!body.text) { toast('Question text is required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const path = id ? `/admin/questions/${id}` : `/admin/diseases/${selectedDiseaseId}/questions`;
+  const r = await apiFetch(path, { method, body });
+  if (r.success) { toast('Question saved', 'success'); closeModal('qModal'); selectDisease(selectedDiseaseId); }
+  else toast(r.error || 'Error', 'error');
+}
+
+async function deleteQ(id) {
+  if (!confirm('Delete this question?')) return;
+  const r = await apiFetch(`/admin/questions/${id}`, { method: 'DELETE' });
+  if (r.success) { toast('Question deleted', 'success'); selectDisease(selectedDiseaseId); }
+}
+
+loadDiseases();
+</script>
+</body>
+</html>
