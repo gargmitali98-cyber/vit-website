@@ -252,13 +252,183 @@ const claimsQuestions = [
   { id: 'cq_12', section: 'claims', text: 'Please provide details (if Yes to any above)', answerType: 'TEXT', options: [], orderIndex: 12, isActive: true, isMandatory: false },
 ];
 
+// ─── DEMO SEED DATA ──────────────────────────────────────────
+
+const FIRST_NAMES = ['Ahmed','Mohammed','Fatima','Sara','Ali','Omar','Layla','Aisha','Hassan','Zainab','Khaled','Mariam','Yusuf','Noor','Tariq','Hana','Bilal','Rania','Samir','Dina','James','Emily','Michael','Sarah','David','Jessica','Robert','Jennifer','William','Lisa','Abdullah','Noura','Faisal','Maryam','Waleed','Hessa','Rashid','Sheikha','Majid','Amna'];
+const LAST_NAMES  = ['Al-Rashidi','Al-Mansoori','Al-Hashimi','Al-Farsi','Al-Mazrouei','Al-Shamsi','Al-Ketbi','Al-Nuaimi','Smith','Johnson','Williams','Brown','Jones','Garcia','Martinez','Anderson','Taylor','Thomas','Lee','Patel','Sharma','Singh','Kumar','Gupta','Al-Balushi','Al-Harthi','Al-Zaabi','Al-Kindi','Nair','Menon'];
+const NATIONALITIES = ['Emirati','Indian','Pakistani','British','Egyptian','Filipino','American','Jordanian','Lebanese','Bangladeshi','Omani','Saudi','Kenyan','Sri Lankan','German'];
+const GENDERS = ['Male','Female','Male','Male','Female'];
+
+function rnd(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function rndInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+// Disease pools by severity for realistic risk assignment
+const LOW_RISK_DISEASES    = ['cv_01','cv_11','cv_12','cv_13','me_03','me_04','me_05','me_06','me_08','re_01','re_06','re_10','re_11','gr_01','gr_02','gr_05','gr_09','gr_11','gr_12','gr_14','gr_17','gr_18','ms_02','ms_05','ms_06','ms_07','ms_09','ms_12','ms_13','np_05','np_06','np_11','np_12','np_15','np_16','on_09'];
+const MED_RISK_DISEASES    = ['cv_02','cv_05','cv_07','cv_08','cv_14','me_01','me_02','me_07','me_09','me_10','re_02','re_03','re_04','re_08','re_09','gr_03','gr_04','gr_06','gr_07','gr_10','gr_13','gr_15','gr_20','ms_01','ms_03','ms_04','ms_08','ms_14','np_01','np_07','np_09','np_13','np_17','np_18','np_19','on_10','on_11','on_12','on_13','on_14','on_15','in_02','in_03','in_04','in_05','in_06','in_07','in_08','in_09'];
+const HIGH_RISK_DISEASES   = ['cv_03','cv_04','cv_06','cv_09','cv_10','re_05','re_07','gr_08','gr_16','gr_19','np_02','np_03','np_04','np_08','np_10','np_14','ms_10','ms_11','on_01','on_02','on_03','on_04','on_05','on_06','on_07','on_08','in_01'];
+
+const TRIGGERED_RULES_BANK = [
+  'Age > 60 → Mandatory Review',
+  'Diabetes + HbA1c > 9',
+  'Heart Disease + Surgery History',
+  'Multiple Chronic Conditions (3+)',
+  'BMI > 40 → Refer',
+  'Cancer History < 5 Years',
+  'HIV/AIDS Disclosure → Decline',
+  'Renal Failure → Decline',
+  'Pulmonary Fibrosis → Decline',
+  'High Risk Score (>70)',
+  'Smoker + Cardiovascular Disease',
+  'Alzheimer\'s / Dementia → Decline',
+  'Liver Cirrhosis → Decline',
+];
+
+function seedApplications() {
+  const apps = [];
+  const baseDate = new Date('2025-01-01');
+
+  // Distribution: 230 apps — Accepted 38%, Referred 28%, Declined 18%, Submitted/Pending 16%
+  const statusPool = [
+    ...Array(88).fill('ACCEPTED'),
+    ...Array(64).fill('REFERRED'),
+    ...Array(42).fill('DECLINED'),
+    ...Array(36).fill('SUBMITTED'),
+  ];
+
+  const decisionMap = { ACCEPTED: 'ACCEPT', DECLINED: 'DECLINE', REFERRED: null };
+  const uwNames = ['John Underwriter','Sarah Al-Mansoori','Khalid Rashidi'];
+
+  for (let i = 0; i < 230; i++) {
+    const status = statusPool[i];
+    const firstName = rnd(FIRST_NAMES);
+    const lastName  = rnd(LAST_NAMES);
+    const fullName  = `${firstName} ${lastName}`;
+    const gender    = rnd(GENDERS);
+    const age       = rndInt(22, 72);
+    const nationality = rnd(NATIONALITIES);
+    const dob = `${String(rndInt(1,28)).padStart(2,'0')}/${String(rndInt(1,12)).padStart(2,'0')}/${2025-age}`;
+
+    // Risk score drives disease selection and status coherence
+    let riskScore, diseases;
+    if (status === 'ACCEPTED') {
+      riskScore = rndInt(5, 38);
+      const cnt = rndInt(0, 2);
+      diseases = cnt === 0 ? [] : Array.from({length:cnt}, () => rnd(LOW_RISK_DISEASES));
+    } else if (status === 'REFERRED') {
+      riskScore = rndInt(41, 68);
+      const cnt = rndInt(1, 3);
+      diseases = Array.from({length:cnt}, () => rnd([...MED_RISK_DISEASES,...LOW_RISK_DISEASES]));
+    } else if (status === 'DECLINED') {
+      riskScore = rndInt(71, 95);
+      const cnt = rndInt(1, 2);
+      diseases = Array.from({length:cnt}, () => rnd(HIGH_RISK_DISEASES));
+    } else { // SUBMITTED
+      riskScore = rndInt(15, 75);
+      const cnt = rndInt(0, 3);
+      diseases = Array.from({length:cnt}, () => rnd([...LOW_RISK_DISEASES,...MED_RISK_DISEASES]));
+    }
+    diseases = [...new Set(diseases)]; // dedupe
+
+    // Submission date spread across last 18 months
+    const subDate = new Date(baseDate.getTime() + rndInt(0, 540) * 86400000);
+    const submittedAt = subDate.toISOString();
+    const refNum = `DUW-${String(2025001 + i).replace('2025','25')}`;
+
+    const bmi = parseFloat((rndInt(18,42) + Math.random()).toFixed(1));
+    const smoking = rnd(['Never','Ex-smoker','Current','Never','Never','Never']);
+    const alcohol  = rnd(['None','Occasional','None','None','Regular']);
+
+    // Triggered rules for referred/declined
+    const triggeredRules = (status === 'REFERRED' || status === 'DECLINED')
+      ? Array.from({length: rndInt(1,3)}, () => rnd(TRIGGERED_RULES_BANK)).filter((v,i,a) => a.indexOf(v)===i)
+      : [];
+
+    const app = {
+      id: uuid(),
+      referenceNumber: refNum,
+      status,
+      decision: status === 'ACCEPTED' ? 'ACCEPT' : status === 'DECLINED' ? 'DECLINE' : status === 'REFERRED' ? 'REFER' : null,
+      riskScore,
+      submittedAt,
+      createdAt: submittedAt,
+      disclosures: diseases,
+      triggeredRules,
+      personalDetails: {
+        fullName, firstName, lastName, gender, age, dob, nationality,
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/[^a-z]/g,'')}@email.com`,
+        mobile: `+971 5${rndInt(0,9)} ${rndInt(1000000,9999999)}`,
+        occupation: rnd(['Engineer','Manager','Teacher','Nurse','Accountant','Driver','Technician','Analyst','Doctor','Officer','Consultant','Executive']),
+        employer: rnd(['Emirates NBD','Etisalat','ADNOC','Dubai Municipality','Abu Dhabi Health Services','Majid Al Futtaim','Emaar','DP World','RTA','DEWA','ENOC','Emirates Airline']),
+        nationality,
+        city: rnd(['Dubai','Abu Dhabi','Sharjah','Ajman','Ras Al Khaimah','Fujairah']),
+        country: 'UAE',
+      },
+      lifestyle: {
+        smoking, alcohol, bmi,
+        activity: rnd(['Sedentary','Light','Moderate','Active']),
+        occupation: rnd(['Office','Field','Medical','Transport','Education']),
+      },
+      familyHistory: {
+        heartDisease: rnd([true,false,false,false]),
+        diabetes: rnd([true,false,false]),
+        cancer: rnd([true,false,false,false,false]),
+      },
+      claimsHistory: {
+        existingInsurance: rnd(['Yes','No','Yes','No','No']),
+        hasClaims: rnd(['No','No','Yes','No']),
+        claimAmount: rnd([null,null,rndInt(5000,80000),null]),
+      },
+      documents: rndInt(0,1) === 1 ? [{ fileName: 'Medical_Report.pdf', docType: 'Medical Report' }] : [],
+      workbenchDecision: null,
+    };
+
+    // For REFERRED: some have already been decided by UW (show as resolved in workbench)
+    if (status === 'REFERRED' && rndInt(0,2) === 0) {
+      app.workbenchDecision = {
+        decision: rnd(['ACCEPT','ACCEPT_WITH_LOADING','DECLINE']),
+        notes: rnd([
+          'After clinical review, risk is acceptable with standard terms.',
+          'Condition well-controlled. Accept with 25% loading on hospital benefit.',
+          'Multiple uncontrolled conditions. Risk too high for coverage.',
+          'Specialist report reviewed. Refer for further investigation.',
+          'BMI and lifestyle factors noted. Accept with premium loading.',
+        ]),
+        decidedBy: rnd(uwNames),
+        decidedAt: new Date(subDate.getTime() + rndInt(1,14) * 86400000).toISOString(),
+      };
+    }
+
+    apps.push(app);
+  }
+  return apps;
+}
+
+function seedRules() {
+  const now = new Date('2025-03-15').toISOString();
+  return [
+    { id: uuid(), name: 'Age > 60 — Mandatory Review', priority: 10, conditions: { combinator: 'and', rules: [{ field: 'age', op: 'GT', value: 60 }] }, action: 'REFER', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'High Risk Score — Decline', priority: 20, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GTE', value: 75 }] }, action: 'DECLINE', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Elevated Risk Score — Refer', priority: 30, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GTE', value: 50 }] }, action: 'REFER', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Elderly Applicant with Disease', priority: 40, conditions: { combinator: 'and', rules: [{ field: 'age', op: 'GT', value: 55 }, { field: 'disease', op: 'EQ', value: true }] }, action: 'REFER', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Young Healthy — Fast Accept', priority: 50, conditions: { combinator: 'and', rules: [{ field: 'age', op: 'LT', value: 35 }, { field: 'score', op: 'LT', value: 20 }, { field: 'disease', op: 'EQ', value: false }] }, action: 'ACCEPT', isActive: true, createdBy: 'John Underwriter', createdAt: now },
+    { id: uuid(), name: 'BMI > 40 — Refer', priority: 60, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GT', value: 35 }, { field: 'disease', op: 'EQ', value: true }] }, action: 'REFER', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Cancer History — Decline', priority: 70, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GTE', value: 70 }, { field: 'disease', op: 'EQ', value: true }] }, action: 'DECLINE', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Diabetes + High Score', priority: 80, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GT', value: 40 }, { field: 'disease', op: 'EQ', value: true }] }, action: 'REFER', isActive: true, createdBy: 'John Underwriter', createdAt: now },
+    { id: uuid(), name: 'Multiple Chronic Conditions', priority: 90, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GT', value: 45 }, { field: 'disease', op: 'EQ', value: true }] }, action: 'REFER', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Heart Disease + Surgery History', priority: 100, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GT', value: 55 }, { field: 'disease', op: 'EQ', value: true }] }, action: 'REFER', isActive: true, createdBy: 'John Underwriter', createdAt: now },
+    { id: uuid(), name: 'HIV / AIDS Disclosure', priority: 15, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GTE', value: 80 }] }, action: 'DECLINE', isActive: true, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Renal Failure — Decline', priority: 18, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GTE', value: 72 }] }, action: 'DECLINE', isActive: false, createdBy: 'Admin User', createdAt: now },
+    { id: uuid(), name: 'Low Risk Accept with Loading', priority: 110, conditions: { combinator: 'and', rules: [{ field: 'score', op: 'GTE', value: 21 }, { field: 'score', op: 'LT', value: 40 }] }, action: 'ACCEPT_WITH_LOADING', isActive: true, createdBy: 'John Underwriter', createdAt: now },
+  ];
+}
+
 const store = {
   users: [
     { id: 'u1', name: 'Admin User',       email: 'admin@daman.ae', password: 'admin123', role: 'UW_ADMIN' },
     { id: 'u2', name: 'John Underwriter', email: 'uw@daman.ae',    password: 'uw123',    role: 'UNDERWRITER' },
   ],
 
-  applications: [],
+  applications: seedApplications(),
 
   // Cohorts — top level of Disease Master hierarchy
   cohorts: [
@@ -291,7 +461,7 @@ const store = {
     { id: 'rf5', name: 'Alcohol',        type: 'LIFESTYLE', weightage: 8,  thresholds: [{ label: 'None', loadingPct: 0 },{ label: 'Occasional', loadingPct: 3 },{ label: 'Regular', loadingPct: 10 }], isActive: true },
   ],
 
-  rules: [],
+  rules: seedRules(),
 
   decisionMatrix: {
     bands: [
