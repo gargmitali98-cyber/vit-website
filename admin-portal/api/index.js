@@ -11,8 +11,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'daman-uw-secret-2024';
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
-// Static files are served by Vercel's filesystem routing (see vercel.json)
-// Only serve logo and root redirect here as fallback
+// Static files bundled via vercel.json includeFiles
+app.use('/admin',    express.static(path.join(__dirname, '..', 'admin')));
+app.use('/customer', express.static(path.join(__dirname, '..', 'customer-portal')));
+app.use('/public',   express.static(path.join(__dirname, '..', 'public')));
 app.get('/daman-logo.png', (req, res) => {
   res.setHeader('Content-Type', 'image/webp');
   res.sendFile(path.join(__dirname, '..', 'public', 'daman-logo.webp'));
