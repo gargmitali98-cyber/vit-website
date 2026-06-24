@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daman UW Platform — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#f1f5f9;min-height:100vh;display:flex;align-items:center;justify-content:center;color:#0f172a}
+.login-wrap{display:grid;grid-template-columns:480px 1fr;min-height:100vh;max-width:1200px;width:100%;margin:0 auto}
+.login-panel{background:#fff;display:flex;flex-direction:column;justify-content:center;padding:60px 56px;border-right:1px solid #e2e8f0}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:48px}
+.brand-logo{height:40px;width:auto;display:block}
+.brand-name{font-weight:700;font-size:15px;line-height:1.2}
+.brand-name span{display:block;font-weight:400;font-size:12px;color:#64748b}
+h1{font-size:24px;font-weight:700;margin-bottom:6px}
+.subtitle{color:#64748b;font-size:14px;margin-bottom:36px}
+.form-group{margin-bottom:16px}
+label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+.input{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-family:inherit;outline:none;transition:border-color .12s,box-shadow .12s}
+.input:focus{border-color:#1a56db;box-shadow:0 0 0 3px rgba(26,86,219,.1)}
+.btn-login{width:100%;padding:11px;background:#1a56db;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;transition:background .12s;font-family:inherit}
+.btn-login:hover{background:#1342b0}
+.btn-login:disabled{opacity:.6;cursor:not-allowed}
+.error-msg{font-size:13px;color:#dc2626;margin-top:10px;display:none}
+.demo-creds{margin-top:28px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b}
+.demo-creds strong{display:block;margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.demo-row{display:flex;justify-content:space-between;margin-bottom:3px}
+.hero{background:linear-gradient(135deg,#1a56db 0%,#0ea5e9 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px 48px;text-align:center;color:#fff}
+.hero h2{font-size:28px;font-weight:700;margin-bottom:16px;line-height:1.3}
+.hero p{font-size:15px;opacity:.85;max-width:320px;line-height:1.7}
+.hero-features{margin-top:36px;display:flex;flex-direction:column;gap:14px;text-align:left;max-width:320px;width:100%}
+.hero-feature{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.12);padding:12px 14px;border-radius:8px;font-size:13px}
+@media(max-width:768px){.login-wrap{grid-template-columns:1fr}.hero{display:none}.login-panel{padding:40px 32px;min-height:100vh;border-right:none}}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-panel">
+    <div class="brand">
+      <img src="/public/daman-logo.webp" alt="Daman Health" class="brand-logo">
+      <div class="brand-name">Daman Health<span>Underwriting Platform</span></div>
+    </div>
+    <h1>Sign in to your account</h1>
+    <p class="subtitle">Access the underwriting control center</p>
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="email">Email address</label>
+        <input class="input" type="email" id="email" placeholder="you@daman.ae" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input class="input" type="password" id="password" placeholder="••••••••" required>
+      </div>
+      <button class="btn-login" type="submit" id="submitBtn">Sign in</button>
+      <p class="error-msg" id="errorMsg"></p>
+    </form>
+    <div class="demo-creds">
+      <strong>Demo Credentials</strong>
+      <div class="demo-row"><span>UW Admin</span><span>admin@daman.ae / admin123</span></div>
+      <div class="demo-row"><span>Underwriter</span><span>uw@daman.ae / uw123</span></div>
+    </div>
+  </div>
+  <div class="hero">
+    <h2>Digital Underwriting,<br>Redefined</h2>
+    <p>A unified platform for medical disclosure, risk assessment, and underwriting decisions.</p>
+    <div class="hero-features">
+      <div class="hero-feature">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+        Dynamic disclosure questionnaires
+      </div>
+      <div class="hero-feature">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Automated rules engine
+      </div>
+      <div class="hero-feature">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Full audit trail & compliance
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const err = document.getElementById('errorMsg');
+  btn.disabled = true; btn.textContent = 'Signing in…'; err.style.display = 'none';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: document.getElementById('email').value, password: document.getElementById('password').value })
+    });
+    const data = await res.json();
+    if (data.success) {
+      localStorage.setItem('daman_token', data.data.token);
+      localStorage.setItem('daman_user', JSON.stringify(data.data.user));
+      window.location.href = '/admin/dashboard.html';
+    } else {
+      err.textContent = 'Invalid email or password.';
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  } catch {
+    err.textContent = 'Server error. Please try again.';
+    err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>

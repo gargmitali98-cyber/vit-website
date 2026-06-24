@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Applications — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.app-detail{display:none;position:fixed;inset:0;z-index:200;overflow-y:auto;background:rgba(15,23,42,.45)}
+.app-detail.open{display:block}
+.app-detail-panel{background:var(--surface);max-width:680px;min-height:100%;margin-left:auto;padding:32px;box-shadow:var(--shadow-md)}
+.section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin:20px 0 10px}
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kv{padding:10px 0;border-bottom:1px solid var(--border)}
+.kv-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+.kv-value{font-size:14px;font-weight:500}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Applications</div>
+          <div class="page-subtitle">All submitted underwriting applications</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-search">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="input" type="text" id="searchInput" placeholder="Search by name or reference…" oninput="applyFilters()">
+        </div>
+        <select class="select" id="statusFilter" style="width:160px" onchange="applyFilters()">
+          <option value="">All statuses</option>
+          <option value="ACCEPTED">Accepted</option>
+          <option value="REFERRED">Referred</option>
+          <option value="DECLINED">Declined</option>
+          <option value="SUBMITTED">Submitted</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Reference</th><th>Applicant</th><th>Submitted</th>
+              <th>Diseases</th><th>Risk Score</th><th>Status</th><th>Decision</th><th></th>
+            </tr></thead>
+            <tbody id="tableBody"><tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide-over detail panel -->
+<div class="app-detail" id="detailOverlay" onclick="closeDetail(event)">
+  <div class="app-detail-panel" id="detailPanel"></div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Applications');
+
+let apps = [], diseases = [];
+
+async function load() {
+  const [ar, dr] = await Promise.all([apiFetch('/admin/applications'), apiFetch('/admin/diseases')]);
+  apps = ar.data || [];
+  diseases = dr.data || [];
+  applyFilters();
+}
+
+function applyFilters() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  let list = apps;
+  if (status) list = list.filter(a => a.status === status);
+  if (q) list = list.filter(a =>
+    (a.personalDetails?.fullName || '').toLowerCase().includes(q) ||
+    a.referenceNumber.toLowerCase().includes(q)
+  );
+  render(list);
+}
+
+function render(list) {
+  const tbody = document.getElementById('tableBody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty"><p>No applications found</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(a => {
+    const dNames = (a.disclosures || []).map(id => diseases.find(d => d.id === id)?.name || id).slice(0, 2);
+    const more = (a.disclosures || []).length > 2 ? `+${a.disclosures.length - 2}` : '';
+    return `<tr>
+      <td><span class="font-mono" style="color:var(--primary)">${a.referenceNumber}</span></td>
+      <td><strong>${a.personalDetails?.fullName || '—'}</strong><br><span class="text-muted text-sm">${a.personalDetails?.email || ''}</span></td>
+      <td>${formatDate(a.submittedAt)}</td>
+      <td>${dNames.map(n => `<span class="tag">${n}</span>`).join('')}${more ? `<span class="tag">+${more}</span>` : ''}</td>
+      <td>${a.riskScore !== null && a.riskScore !== undefined ? `<strong>${a.riskScore}</strong>` : '—'}</td>
+      <td>${badge(a.status)}</td>
+      <td>${a.decision ? badge(a.decision) : '—'}</td>
+      <td><button class="btn btn-sm btn-secondary" onclick="viewDetail('${a.id}')">View</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function viewDetail(id) {
+  const r = await apiFetch(`/admin/applications/${id}`);
+  const a = r.data;
+  const dNames = (a.disclosures || []).map(id => diseases.find(d => d.id === id)?.name || id);
+  const pd = a.personalDetails || {};
+  const ls = a.lifestyle || {};
+  const fh = a.familyHistory || {};
+  const ch = a.claimsHistory || {};
+
+  document.getElementById('detailPanel').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:700">${pd.fullName || 'Applicant'}</div>
+        <div class="text-muted text-sm">${a.referenceNumber}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        ${badge(a.status)} ${a.decision ? badge(a.decision) : ''}
+        <button class="btn-ghost" onclick="closeDetailDirect()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    ${a.riskScore !== null && a.riskScore !== undefined ? `<div style="background:var(--primary-light);border:1px solid #c7d7fb;border-radius:8px;padding:14px;margin-bottom:16px;display:flex;align-items:center;gap:12px"><span style="font-size:28px;font-weight:800;color:var(--primary)">${a.riskScore}</span><div><div style="font-weight:600">Risk Score</div><div class="text-muted text-sm">Computed at submission</div></div></div>` : ''}
+    <div class="section-title">Personal Details</div>
+    <div class="kv-grid">
+      ${kv('Full Name', pd.fullName)} ${kv('Date of Birth', pd.dob)} ${kv('Age', pd.age)}
+      ${kv('Gender', pd.gender)} ${kv('Nationality', pd.nationality)} ${kv('Mobile', pd.mobile)} ${kv('Email', pd.email)}
+    </div>
+    <div class="section-title">Lifestyle</div>
+    <div class="kv-grid">
+      ${kv('Smoking', ls.smoking)} ${kv('Alcohol', ls.alcohol)} ${kv('BMI', ls.bmi ? ls.bmi.toFixed(1) : '—')}
+      ${kv('Physical Activity', ls.activity)} ${kv('Occupation', ls.occupation)}
+    </div>
+    <div class="section-title">Disclosed Conditions</div>
+    <div>${dNames.length ? dNames.map(n => `<span class="tag" style="font-size:12px;padding:4px 12px">${n}</span>`).join('') : '<span class="text-muted text-sm">None disclosed</span>'}</div>
+    <div class="section-title">Claims & Insurance History</div>
+    <div class="kv-grid">
+      ${kv('Existing Insurance', ch.existingInsurance)} ${kv('Previous Claims', ch.hasClaims)} ${kv('Claim Amount', ch.claimAmount ? 'AED ' + ch.claimAmount : '—')}
+    </div>
+    <div class="section-title">Documents</div>
+    <div>${(a.documents || []).length ? a.documents.map(d => `<div class="flex items-center gap-8" style="padding:6px 0;border-bottom:1px solid var(--border)"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="text-sm">${d.fileName}</span><span class="tag" style="margin-left:auto">${d.docType}</span></div>`).join('') : '<span class="text-muted text-sm">No documents uploaded</span>'}</div>
+    ${a.workbenchDecision ? `<div class="section-title">Underwriter Decision</div><div class="alert alert-info">${badge(a.workbenchDecision.decision)} by <strong>${a.workbenchDecision.decidedBy}</strong> · ${formatDateTime(a.workbenchDecision.decidedAt)}<br><em>"${a.workbenchDecision.notes}"</em></div>` : ''}`;
+  document.getElementById('detailOverlay').classList.add('open');
+}
+
+function kv(label, val) {
+  return `<div class="kv"><div class="kv-label">${label}</div><div class="kv-value">${val || '—'}</div></div>`;
+}
+
+function closeDetail(e) { if (e.target === document.getElementById('detailOverlay')) closeDetailDirect(); }
+function closeDetailDirect() { document.getElementById('detailOverlay').classList.remove('open'); }
+
+load();
+</script>
+</body>
+</html>

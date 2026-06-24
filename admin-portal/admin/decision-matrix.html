@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decision Matrix — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.matrix-wrap{max-width:640px}
+.matrix-band{display:grid;grid-template-columns:80px 20px 80px 160px auto;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+.matrix-band:last-child{border-bottom:none}
+.matrix-label{font-size:12px;color:var(--text-muted);font-weight:600;text-align:right}
+.matrix-sep{text-align:center;color:var(--text-muted)}
+.preview-band{display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:var(--radius-lg);border:2px solid;margin-bottom:10px;font-weight:600}
+.preview-accept{border-color:#86efac;background:#f0fdf4;color:#166534}
+.preview-loading{border-color:#93c5fd;background:#eff6ff;color:#1e40af}
+.preview-refer{border-color:#fcd34d;background:#fffbeb;color:#92400e}
+.preview-decline{border-color:#fca5a5;background:#fff5f5;color:#991b1b}
+.score-range{font-size:24px;font-weight:800;min-width:80px}
+.band-arrow{font-size:18px;opacity:.4}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Decision Matrix</div>
+          <div class="page-subtitle">Configure score-band-to-decision mapping</div>
+        </div>
+        <button class="btn btn-primary" onclick="saveMatrix()">Save Matrix</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+        <div class="card matrix-wrap" style="max-width:100%">
+          <div class="card-header">
+            <span class="card-title">Score Bands</span>
+            <button class="btn btn-sm btn-secondary" onclick="addBand()">+ Add Band</button>
+          </div>
+          <div class="card-body">
+            <div style="display:grid;grid-template-columns:80px 16px 80px 1fr 32px;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px">
+              <span style="font-size:11px;font-weight:600;color:var(--text-muted)">MIN SCORE</span>
+              <span></span>
+              <span style="font-size:11px;font-weight:600;color:var(--text-muted)">MAX SCORE</span>
+              <span style="font-size:11px;font-weight:600;color:var(--text-muted)">DECISION</span>
+              <span></span>
+            </div>
+            <div id="bandsContainer"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card-title" style="margin-bottom:14px;font-size:14px;font-weight:600">Preview</div>
+          <div id="preview"></div>
+          <div class="alert alert-info" style="margin-top:16px">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            The decision matrix applies only when no UW rule matches the applicant's profile.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Decision Matrix');
+
+let bands = [];
+
+const decisionColors = {
+  ACCEPT: 'preview-accept', ACCEPT_WITH_LOADING: 'preview-loading',
+  REFER: 'preview-refer', DECLINE: 'preview-decline'
+};
+const decisionLabel = { ACCEPT: 'Accept', ACCEPT_WITH_LOADING: 'Accept with Loading', REFER: 'Refer', DECLINE: 'Decline' };
+
+async function load() {
+  const r = await apiFetch('/admin/decision-matrix');
+  bands = (r.data?.bands || []).map(b => ({ ...b }));
+  renderBands();
+  renderPreview();
+}
+
+function renderBands() {
+  const el = document.getElementById('bandsContainer');
+  el.innerHTML = bands.map((b, i) => `
+    <div style="display:grid;grid-template-columns:80px 16px 80px 1fr 32px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <input class="input" type="number" value="${b.minScore}" min="0" onchange="updateBand(${i},'minScore',this.value)" style="text-align:center">
+      <span style="text-align:center;color:var(--text-muted)">–</span>
+      <input class="input" type="number" value="${b.maxScore}" min="0" onchange="updateBand(${i},'maxScore',this.value)" style="text-align:center">
+      <select class="select" onchange="updateBand(${i},'decision',this.value)">
+        ${['ACCEPT','ACCEPT_WITH_LOADING','REFER','DECLINE'].map(d => `<option value="${d}" ${b.decision===d?'selected':''}>${decisionLabel[d]}</option>`).join('')}
+      </select>
+      <button class="btn-ghost" onclick="removeBand(${i})" title="Remove">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('');
+}
+
+function renderPreview() {
+  document.getElementById('preview').innerHTML = bands.map(b => `
+    <div class="preview-band ${decisionColors[b.decision] || ''}">
+      <span class="score-range">${b.minScore}–${b.maxScore}</span>
+      <span class="band-arrow">→</span>
+      <span>${decisionLabel[b.decision] || b.decision}</span>
+    </div>`).join('') || '<div class="text-muted text-sm">No bands configured</div>';
+}
+
+function updateBand(i, key, val) {
+  bands[i][key] = key === 'decision' ? val : Number(val);
+  renderPreview();
+}
+
+function addBand() {
+  const last = bands[bands.length - 1];
+  bands.push({ minScore: last ? last.maxScore + 1 : 0, maxScore: last ? last.maxScore + 20 : 20, decision: 'REFER' });
+  renderBands(); renderPreview();
+}
+
+function removeBand(i) { bands.splice(i, 1); renderBands(); renderPreview(); }
+
+async function saveMatrix() {
+  const r = await apiFetch('/admin/decision-matrix', { method: 'PUT', body: { bands } });
+  if (r.success) toast('Decision matrix saved', 'success');
+  else toast(r.error || 'Error', 'error');
+}
+
+load();
+</script>
+</body>
+</html>

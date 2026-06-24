@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Questionnaire Builder — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.qb-layout{display:grid;grid-template-columns:210px 210px 1fr;gap:14px;align-items:start}
+/* Panel shells */
+.panel-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column}
+.panel-head{padding:11px 13px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.panel-title{font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
+.panel-body{padding:8px;overflow-y:auto;max-height:calc(100vh - 240px)}
+/* Search */
+.search-box{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;margin-bottom:6px;outline:none;background:var(--bg);box-sizing:border-box}
+.search-box:focus{border-color:var(--primary)}
+/* List items */
+.list-item{padding:8px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;color:var(--text);transition:all .1s;margin-bottom:2px;border:1px solid transparent;display:flex;align-items:center;justify-content:space-between;gap:4px}
+.list-item:hover{background:var(--primary-light);border-color:var(--primary);color:var(--primary)}
+.list-item.active{background:var(--primary-light);border-color:var(--primary);color:var(--primary);font-weight:700}
+.list-item-meta{font-size:10px;color:var(--text-muted);margin-top:1px;font-weight:400}
+.list-item.active .list-item-meta{color:var(--primary);opacity:.7}
+.list-item-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-count-pill{flex-shrink:0;background:var(--border);color:var(--text-muted);font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;min-width:18px;text-align:center}
+.list-item.active .q-count-pill{background:var(--primary);color:#fff}
+/* Question rows */
+.q-item{display:flex;align-items:flex-start;gap:10px;padding:13px 15px;border-bottom:1px solid var(--border);transition:background .1s}
+.q-item:hover{background:var(--bg)}
+.q-body{flex:1;min-width:0}
+.q-text{font-size:13px;font-weight:500;margin-bottom:5px;line-height:1.4}
+.q-meta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.q-actions{display:flex;gap:4px;flex-shrink:0;align-items:flex-start;opacity:0;transition:opacity .1s}
+.q-item:hover .q-actions{opacity:1}
+/* Badges */
+.at-badge{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;background:var(--info-bg);color:var(--info)}
+.mand-badge{background:#dcfce7;color:#16a34a;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px}
+.opt-badge{background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px}
+.dis-badge{background:#fee2e2;color:#ef4444;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px}
+.cond-badge{background:#fef3c7;color:#b45309;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px}
+/* Reorder */
+.reorder-btns{display:flex;flex-direction:column;gap:2px;flex-shrink:0}
+.reorder-btns button{width:20px;height:16px;font-size:9px;background:var(--bg);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-muted);display:flex;align-items:center;justify-content:center}
+.reorder-btns button:hover{background:var(--primary-light);border-color:var(--primary);color:var(--primary)}
+/* Questions panel header context */
+.q-panel-context{padding:10px 15px;background:var(--bg);border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center}
+.q-panel-context strong{color:var(--text)}
+.empty-sm{padding:20px 14px;text-align:center;color:var(--text-muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Questionnaire Builder</div>
+          <div class="page-subtitle">Configure disease-specific questions: Cohort → Disease → Questions</div>
+        </div>
+      </div>
+
+      <div class="qb-layout">
+        <!-- Panel 1: Cohorts -->
+        <div class="panel-card">
+          <div class="panel-head"><span class="panel-title">Cohorts</span></div>
+          <div class="panel-body">
+            <input class="search-box" type="text" id="cohortSearch" placeholder="Filter cohorts…" oninput="filterCohorts()">
+            <div id="cohortList"><div class="empty-sm">Loading…</div></div>
+          </div>
+        </div>
+
+        <!-- Panel 2: Diseases -->
+        <div class="panel-card">
+          <div class="panel-head"><span class="panel-title" id="diseasePanelTitle">Diseases</span></div>
+          <div class="panel-body">
+            <input class="search-box" type="text" id="diseaseSearch" placeholder="Filter diseases…" oninput="filterDiseases()">
+            <div id="diseaseList"><div class="empty-sm">Loading…</div></div>
+          </div>
+        </div>
+
+        <!-- Panel 3: Questions -->
+        <div class="panel-card">
+          <div class="panel-head">
+            <span class="panel-title" id="qPanelTitle">Questions</span>
+            <button class="btn btn-sm btn-primary" id="addQBtn" style="display:none" onclick="openAddModal()">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Question
+            </button>
+          </div>
+          <div id="qPanelContext" class="q-panel-context" style="display:none"></div>
+          <div id="questionsList">
+            <div class="empty-sm">Select a disease to view its questions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Question Modal -->
+<div class="modal-overlay" id="qModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">Add Question</span>
+      <button class="btn-ghost" onclick="closeModal('qModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-group">
+        <label>Question Text <span class="required">*</span></label>
+        <input class="input" type="text" id="qText" placeholder="e.g. Year first diagnosed">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Answer Type <span class="required">*</span></label>
+          <select class="select" id="qType" onchange="toggleOptions()">
+            <option value="TEXT">Text</option>
+            <option value="NUMBER">Number</option>
+            <option value="YES_NO">Yes / No</option>
+            <option value="DATE">Date</option>
+            <option value="DROPDOWN">Dropdown</option>
+            <option value="MULTI_SELECT">Multi-select</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Mandatory?</label>
+          <select class="select" id="qMandatory">
+            <option value="true">Yes — Mandatory</option>
+            <option value="false">No — Optional</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="optionsGroup" style="display:none">
+        <label>Options <span class="required">*</span></label>
+        <textarea class="textarea" id="qOptions" placeholder="One option per line" rows="4"></textarea>
+        <div class="text-muted text-sm" style="margin-top:4px">Enter one option per line</div>
+      </div>
+      <div class="form-group">
+        <label>Conditional on question (optional)</label>
+        <select class="select" id="qCondParent">
+          <option value="">— None (always show) —</option>
+        </select>
+        <div class="text-muted text-sm" style="margin-top:4px">Show this question only if the selected question is answered "Yes"</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('qModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveQuestion()">Save Question</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Questionnaire Builder');
+
+let cohorts = [], diseases = [], questions = [];
+// qCounts[diseaseId] = number of active questions (cached after first fetch)
+let qCounts = {};
+let selectedCohortId = null, selectedDiseaseId = null;
+let cohortFilter = '', diseaseFilter = '';
+
+// ── Bootstrap ─────────────────────────────────────
+async function load() {
+  const [cr, dr] = await Promise.all([apiFetch('/admin/cohorts'), apiFetch('/admin/diseases')]);
+  cohorts  = cr.data || [];
+  diseases = dr.data || [];
+  // Auto-select first cohort, then first disease in it
+  if (cohorts.length) {
+    selectedCohortId = cohorts[0].id;
+    const firstDisease = diseases.find(d => d.cohortId === selectedCohortId && d.isActive);
+    if (firstDisease) {
+      selectedDiseaseId = firstDisease.id;
+    }
+  }
+  renderCohorts();
+  renderDiseases();
+  updateQPanelHeader();
+  if (selectedDiseaseId) await loadQuestions(selectedDiseaseId);
+}
+
+function updateQPanelHeader() {
+  const d = diseases.find(x => x.id === selectedDiseaseId);
+  const c = cohorts.find(x => x.id === selectedCohortId);
+  document.getElementById('qPanelTitle').textContent = 'Questions';
+  document.getElementById('addQBtn').style.display = selectedDiseaseId ? 'inline-flex' : 'none';
+  const ctx = document.getElementById('qPanelContext');
+  if (d && c) {
+    ctx.style.display = 'flex';
+    ctx.innerHTML = `<span style="color:var(--text-muted)">${escHtml(c.name)}</span>
+      <span style="color:var(--border)">›</span>
+      <strong>${escHtml(d.name)}</strong>`;
+  } else {
+    ctx.style.display = 'none';
+  }
+}
+
+// ── Panel 1: Cohorts ──────────────────────────────
+function filterCohorts() {
+  cohortFilter = document.getElementById('cohortSearch').value.toLowerCase();
+  renderCohorts();
+}
+
+function renderCohorts() {
+  const el = document.getElementById('cohortList');
+  const list = cohortFilter ? cohorts.filter(c => c.name.toLowerCase().includes(cohortFilter)) : cohorts;
+  if (!list.length) { el.innerHTML = '<div class="empty-sm">No cohorts found</div>'; return; }
+  el.innerHTML = list.map(c => {
+    const cnt = diseases.filter(d => d.cohortId === c.id && d.isActive).length;
+    return `<div class="list-item${c.id === selectedCohortId ? ' active' : ''}" onclick="selectCohort('${c.id}')">
+      <div>
+        <div class="list-item-name">${escHtml(c.name)}</div>
+        <div class="list-item-meta">${cnt} disease${cnt !== 1 ? 's' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectCohort(id) {
+  selectedCohortId = id;
+  selectedDiseaseId = null;
+  questions = [];
+  diseaseFilter = '';
+  document.getElementById('diseaseSearch').value = '';
+  const c = cohorts.find(x => x.id === id);
+  document.getElementById('diseasePanelTitle').textContent = c ? c.name : 'Diseases';
+  renderCohorts();
+  renderDiseases();
+  // Auto-select first disease in this cohort
+  const first = diseases.find(d => d.cohortId === id && d.isActive);
+  if (first) selectDisease(first.id);
+  else {
+    updateQPanelHeader();
+    document.getElementById('questionsList').innerHTML = '<div class="empty-sm">No diseases in this cohort yet.</div>';
+  }
+}
+
+// ── Panel 2: Diseases ─────────────────────────────
+function filterDiseases() {
+  diseaseFilter = document.getElementById('diseaseSearch').value.toLowerCase();
+  renderDiseases();
+}
+
+function renderDiseases() {
+  const el = document.getElementById('diseaseList');
+  if (!selectedCohortId) { el.innerHTML = '<div class="empty-sm">Select a cohort</div>'; return; }
+  let list = diseases.filter(d => d.cohortId === selectedCohortId && d.isActive);
+  if (diseaseFilter) list = list.filter(d => d.name.toLowerCase().includes(diseaseFilter));
+  if (!list.length) { el.innerHTML = '<div class="empty-sm">' + (diseaseFilter ? 'No match' : 'No diseases') + '</div>'; return; }
+  el.innerHTML = list.map(d => {
+    const qc = qCounts[d.id] !== undefined ? qCounts[d.id] : '·';
+    return `<div class="list-item${d.id === selectedDiseaseId ? ' active' : ''}" onclick="selectDisease('${d.id}')">
+      <span class="list-item-name" title="${escHtml(d.name)}">${escHtml(d.name)}</span>
+      <span class="q-count-pill">${qc}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Panel 3: Questions ────────────────────────────
+async function selectDisease(id) {
+  selectedDiseaseId = id;
+  renderDiseases();
+  updateQPanelHeader();
+  document.getElementById('questionsList').innerHTML = '<div class="empty-sm" style="padding:16px">Loading…</div>';
+  await loadQuestions(id);
+}
+
+async function loadQuestions(id) {
+  const r = await apiFetch(`/admin/diseases/${id}/questions`);
+  questions = (r.data || []).sort((a, b) => a.orderIndex - b.orderIndex);
+  qCounts[id] = questions.filter(q => q.isActive).length;
+  renderDiseases(); // refresh count pills
+  renderQuestions();
+}
+
+function renderQuestions() {
+  const el = document.getElementById('questionsList');
+  const active = questions.filter(q => q.isActive);
+  const disabled = questions.filter(q => !q.isActive);
+
+  if (!questions.length) {
+    el.innerHTML = '<div class="empty-sm">No questions configured.<br>Click "Add Question" to build the questionnaire.</div>';
+    return;
+  }
+
+  const renderGroup = (list, grpLabel) => {
+    if (!list.length) return '';
+    const header = grpLabel
+      ? `<div style="padding:8px 15px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)">${grpLabel}</div>`
+      : '';
+    return header + list.map((q, i) => {
+      const condQ = q.conditionalOn ? questions.find(x => x.id === q.conditionalOn) : null;
+      const num = questions.indexOf(q) + 1;
+      return `<div class="q-item">
+        <div class="reorder-btns">
+          <button onclick="moveQ('${q.id}', -1)" title="Move up">▲</button>
+          <button onclick="moveQ('${q.id}',  1)" title="Move down">▼</button>
+        </div>
+        <div class="q-body">
+          <div class="q-text">${num}. ${escHtml(q.text)}</div>
+          <div class="q-meta">
+            <span class="at-badge">${(q.answerType || '').replace(/_/g,' ')}</span>
+            ${q.isMandatory ? '<span class="mand-badge">Mandatory</span>' : '<span class="opt-badge">Optional</span>'}
+            ${!q.isActive ? '<span class="dis-badge">Disabled</span>' : ''}
+            ${condQ ? `<span class="cond-badge">↳ If: ${escHtml(condQ.text.substring(0,35))}…</span>` : ''}
+            ${q.options && q.options.length ? `<span style="font-size:10px;color:var(--text-muted)">${q.options.length} opts</span>` : ''}
+          </div>
+        </div>
+        <div class="q-actions">
+          <button class="btn btn-sm btn-secondary" onclick="openEditModal('${q.id}')">Edit</button>
+          <button class="btn btn-sm btn-secondary" onclick="toggleMandatory('${q.id}')">${q.isMandatory ? 'Opt.' : 'Mand.'}</button>
+          <button class="btn btn-sm btn-secondary" onclick="toggleQ('${q.id}')">${q.isActive ? 'Off' : 'On'}</button>
+          <button class="btn btn-sm btn-danger"    onclick="deleteQ('${q.id}')">Del</button>
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  el.innerHTML = renderGroup(active, disabled.length ? 'Active' : '') + renderGroup(disabled, 'Disabled');
+}
+
+// ── Reorder ───────────────────────────────────────
+async function moveQ(id, dir) {
+  const idx = questions.findIndex(q => q.id === id);
+  if (idx < 0) return;
+  const ni = idx + dir;
+  if (ni < 0 || ni >= questions.length) return;
+  [questions[idx], questions[ni]] = [questions[ni], questions[idx]];
+  questions[idx].orderIndex = idx + 1;
+  questions[ni].orderIndex  = ni  + 1;
+  apiFetch(`/admin/questions/${questions[idx].id}`,  { method: 'PUT', body: { orderIndex: questions[idx].orderIndex } });
+  apiFetch(`/admin/questions/${questions[ni].id}`,   { method: 'PUT', body: { orderIndex: questions[ni].orderIndex } });
+  renderQuestions();
+}
+
+// ── Modals ────────────────────────────────────────
+function buildCondOptions(excludeId) {
+  const yesNoQs = questions.filter(q => q.answerType === 'YES_NO' && q.id !== excludeId && q.isActive);
+  const sel = document.getElementById('qCondParent');
+  sel.innerHTML = '<option value="">— None (always show) —</option>' +
+    yesNoQs.map(q => `<option value="${q.id}">${escHtml(q.text.substring(0, 60))}</option>`).join('');
+}
+
+function openAddModal() {
+  document.getElementById('editId').value = '';
+  document.getElementById('qText').value = '';
+  document.getElementById('qType').value = 'TEXT';
+  document.getElementById('qMandatory').value = 'false';
+  document.getElementById('qOptions').value = '';
+  document.getElementById('modalTitle').textContent = 'Add Question';
+  buildCondOptions(null);
+  toggleOptions();
+  openModal('qModal');
+}
+
+function openEditModal(id) {
+  const q = questions.find(x => x.id === id);
+  if (!q) return;
+  document.getElementById('editId').value = q.id;
+  document.getElementById('qText').value = q.text;
+  document.getElementById('qType').value = q.answerType || 'TEXT';
+  document.getElementById('qMandatory').value = String(!!q.isMandatory);
+  document.getElementById('qOptions').value = (q.options || []).join('\n');
+  document.getElementById('modalTitle').textContent = 'Edit Question';
+  buildCondOptions(id);
+  document.getElementById('qCondParent').value = q.conditionalOn || '';
+  toggleOptions();
+  openModal('qModal');
+}
+
+function toggleOptions() {
+  const t = document.getElementById('qType').value;
+  document.getElementById('optionsGroup').style.display = ['DROPDOWN', 'MULTI_SELECT'].includes(t) ? 'block' : 'none';
+}
+
+async function saveQuestion() {
+  const id   = document.getElementById('editId').value;
+  const type = document.getElementById('qType').value;
+  const condParent = document.getElementById('qCondParent').value;
+  const body = {
+    text:          document.getElementById('qText').value.trim(),
+    answerType:    type,
+    isMandatory:   document.getElementById('qMandatory').value === 'true',
+    conditionalOn: condParent || null,
+    options: ['DROPDOWN', 'MULTI_SELECT'].includes(type)
+      ? document.getElementById('qOptions').value.split('\n').map(s => s.trim()).filter(Boolean)
+      : [],
+  };
+  if (!body.text) { toast('Question text is required', 'error'); return; }
+  const r = await apiFetch(
+    id ? `/admin/questions/${id}` : `/admin/diseases/${selectedDiseaseId}/questions`,
+    { method: id ? 'PUT' : 'POST', body }
+  );
+  if (r.success) { toast('Saved', 'success'); closeModal('qModal'); await loadQuestions(selectedDiseaseId); }
+  else toast(r.error || 'Error', 'error');
+}
+
+async function toggleMandatory(id) {
+  const q = questions.find(x => x.id === id);
+  if (!q) return;
+  const r = await apiFetch(`/admin/questions/${id}`, { method: 'PUT', body: { isMandatory: !q.isMandatory } });
+  if (r.success) { toast('Updated', 'success'); await loadQuestions(selectedDiseaseId); }
+}
+
+async function toggleQ(id) {
+  const q = questions.find(x => x.id === id);
+  if (!q) return;
+  const r = await apiFetch(`/admin/questions/${id}`, { method: 'PUT', body: { isActive: !q.isActive } });
+  if (r.success) { toast('Updated', 'success'); await loadQuestions(selectedDiseaseId); }
+}
+
+async function deleteQ(id) {
+  if (!confirm('Delete this question?')) return;
+  const r = await apiFetch(`/admin/questions/${id}`, { method: 'DELETE' });
+  if (r.success) { toast('Deleted', 'success'); await loadQuestions(selectedDiseaseId); }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+load();
+</script>
+</body>
+</html>

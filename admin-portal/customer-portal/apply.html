@@ -1558,14 +1558,17 @@ async function init() {
       if (app.lifestyle && app.lifestyle.smokingStatus) { appData.lifestyle = app.lifestyle; completed.add('lifestyle'); }
       if (app.familyHistory) { appData.familyHistory = app.familyHistory; Object.assign(appData, app.familyHistory); completed.add('family'); }
       if (app.claimsHistory) { appData.claimsHistory = app.claimsHistory; completed.add('claims'); }
-      if (app.disclosures) { appData.disclosures = app.disclosures; Object.assign(appData, app.disclosures); completed.add('disclosure'); }
-      if (app.answers && app.answers.length) {
-        const dIds = Array.from(new Set(app.answers.map(function(a) { return a.diseaseId; })));
-        dIds.forEach(function(id) { selectedDiseases.add(id); });
-        app.answers.forEach(function(a) { questionAnswers[a.diseaseId + '_' + a.questionId] = a.answer; });
-        completed.add('conditions');
-      } else if (app.diseases && app.diseases.length) {
-        app.diseases.forEach(function(d) { selectedDiseases.add(d.id); });
+      if (app.disclosures && typeof app.disclosures === 'object' && !Array.isArray(app.disclosures) && app.disclosures.inGoodHealth !== undefined) {
+        appData.disclosures = app.disclosures; Object.assign(appData, app.disclosures); completed.add('disclosure');
+        // Good health = yes path skips conditions — restore that skip
+        if (app.disclosures.inGoodHealth === true) { completed.add('conditions'); }
+      }
+      const answersPayload = app.answers;
+      const answersArr = answersPayload && Array.isArray(answersPayload.answers) ? answersPayload.answers : (Array.isArray(answersPayload) ? answersPayload : []);
+      const diseasesArr2 = answersPayload && Array.isArray(answersPayload.diseases) ? answersPayload.diseases : (app.diseases && Array.isArray(app.diseases) ? app.diseases : []);
+      if (answersArr.length || diseasesArr2.length) {
+        diseasesArr2.forEach(function(d) { selectedDiseases.add(d.id || d); });
+        answersArr.forEach(function(a) { questionAnswers[(a.diseaseId || '') + '_' + (a.questionId || '')] = a.answer; });
         completed.add('conditions');
       }
       if (app.documents && app.documents.length) {

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rules Engine — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.rule-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:12px;box-shadow:var(--shadow)}
+.rule-card-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.rule-name{font-weight:700;font-size:14px;flex:1}
+.rule-action-badge{padding:3px 12px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase}
+.action-ACCEPT{background:#dcfce7;color:#16a34a}
+.action-REFER{background:#fef3c7;color:#d97706}
+.action-DECLINE{background:#fee2e2;color:#dc2626}
+.action-ACCEPT_WITH_LOADING{background:#e0f2fe;color:#0284c7}
+.rule-conditions{background:var(--bg);border-radius:var(--radius);padding:12px;font-family:'SF Mono','Fira Code',monospace;font-size:12px;line-height:1.8;color:var(--text)}
+.rule-footer{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.rule-meta{font-size:11px;color:var(--text-muted);flex:1}
+.toggle-switch{position:relative;display:inline-block;width:36px;height:20px}
+.toggle-switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:20px;transition:.15s}
+.slider:before{content:'';position:absolute;width:14px;height:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s}
+input:checked+.slider{background:var(--primary)}
+input:checked+.slider:before{transform:translateX(16px)}
+.cond-row{display:grid;grid-template-columns:1fr 80px 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+.test-result{padding:14px;border-radius:var(--radius);margin-top:12px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Underwriting Rules Engine</div>
+          <div class="page-subtitle">Define business rules for automated underwriting decisions</div>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-secondary" onclick="openTest()">Test Rules</button>
+          <button class="btn btn-primary" onclick="openAdd()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Rule
+          </button>
+        </div>
+      </div>
+
+      <div class="alert alert-info">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Rules are evaluated in priority order. First matching rule wins. If no rule matches, the Decision Matrix score band applies.
+      </div>
+
+      <div id="rulesList"><div class="text-muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Rule Modal -->
+<div class="modal-overlay" id="ruleModal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <span class="modal-title" id="ruleModalTitle">Add Rule</span>
+      <button class="btn-ghost" onclick="closeModal('ruleModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rEditId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Rule Name <span class="required">*</span></label>
+          <input class="input" type="text" id="rName" placeholder="e.g. Elderly Diabetic Refer">
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <input class="input" type="number" id="rPriority" min="1" value="10" placeholder="Lower = higher priority">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Combinator</label>
+        <select class="select" id="rCombinator" style="max-width:120px">
+          <option value="and">AND (all)</option>
+          <option value="or">OR (any)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Conditions <span class="required">*</span></label>
+        <div id="condRows"></div>
+        <button class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="addCondRow()">+ Add Condition</button>
+      </div>
+      <div class="form-group">
+        <label>Action (THEN) <span class="required">*</span></label>
+        <select class="select" id="rAction">
+          <option value="ACCEPT">Accept</option>
+          <option value="ACCEPT_WITH_LOADING">Accept with Loading</option>
+          <option value="REFER">Refer</option>
+          <option value="DECLINE">Decline</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('ruleModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Test Modal -->
+<div class="modal-overlay" id="testModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Test Rules Engine</span>
+      <button class="btn-ghost" onclick="closeModal('testModal')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info" style="margin-bottom:16px">Enter a simulated applicant profile to see which rules trigger.</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Age</label>
+          <input class="input" type="number" id="tAge" placeholder="e.g. 45">
+        </div>
+        <div class="form-group">
+          <label>Risk Score (simulated)</label>
+          <input class="input" type="number" id="tScore" placeholder="e.g. 55">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Has any disease disclosed?</label>
+        <select class="select" id="tDisease">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+      <button class="btn btn-primary w-full" onclick="runTest()" style="margin-top:8px">Run Test</button>
+      <div id="testResult"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('Rules Engine');
+
+let rules = [];
+
+async function load() {
+  const r = await apiFetch('/admin/rules');
+  rules = (r.data || []).sort((a, b) => (a.priority || 99) - (b.priority || 99));
+  render();
+}
+
+function condText(conditions) {
+  if (!conditions || !conditions.rules) return 'No conditions';
+  const parts = conditions.rules.map(c => `${c.field} ${c.op} ${c.value}`);
+  return parts.join(` <strong>${conditions.combinator?.toUpperCase()}</strong> `);
+}
+
+function render() {
+  const el = document.getElementById('rulesList');
+  if (!rules.length) { el.innerHTML = `<div class="empty"><p>No rules defined</p><small>Rules are evaluated before the decision matrix. Add rules for edge cases.</small></div>`; return; }
+  el.innerHTML = rules.map(rule => `
+    <div class="rule-card">
+      <div class="rule-card-header">
+        <span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--bg);padding:2px 8px;border-radius:4px">#${rule.priority || '—'}</span>
+        <span class="rule-name">${rule.name}</span>
+        <span class="rule-action-badge action-${rule.action}">${rule.action.replace('_',' ')}</span>
+      </div>
+      <div class="rule-conditions">IF: ${condText(rule.conditions)}</div>
+      <div class="rule-footer">
+        <div class="rule-meta">Created by ${rule.createdBy} · ${formatDate(rule.createdAt)}</div>
+        <label class="toggle-switch" title="${rule.isActive ? 'Active' : 'Inactive'}">
+          <input type="checkbox" ${rule.isActive ? 'checked' : ''} onchange="toggleRule('${rule.id}', this.checked)">
+          <span class="slider"></span>
+        </label>
+        <button class="btn btn-sm btn-secondary" onclick="editRule('${rule.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteRule('${rule.id}','${rule.name}')">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+function openAdd() {
+  document.getElementById('rEditId').value = '';
+  document.getElementById('rName').value = '';
+  document.getElementById('rPriority').value = (rules.length + 1) * 10;
+  document.getElementById('rCombinator').value = 'and';
+  document.getElementById('rAction').value = 'REFER';
+  document.getElementById('condRows').innerHTML = '';
+  addCondRow();
+  document.getElementById('ruleModalTitle').textContent = 'Add Rule';
+  openModal('ruleModal');
+}
+
+function editRule(id) {
+  const rule = rules.find(x => x.id === id);
+  if (!rule) return;
+  document.getElementById('rEditId').value = rule.id;
+  document.getElementById('rName').value = rule.name;
+  document.getElementById('rPriority').value = rule.priority || 10;
+  document.getElementById('rCombinator').value = rule.conditions?.combinator || 'and';
+  document.getElementById('rAction').value = rule.action;
+  document.getElementById('condRows').innerHTML = '';
+  (rule.conditions?.rules || []).forEach(c => addCondRow(c.field, c.op, c.value));
+  if (!(rule.conditions?.rules?.length)) addCondRow();
+  document.getElementById('ruleModalTitle').textContent = 'Edit Rule';
+  openModal('ruleModal');
+}
+
+function addCondRow(field = 'age', op = 'GT', value = '') {
+  const row = document.createElement('div');
+  row.className = 'cond-row';
+  row.innerHTML = `
+    <select class="select cond-field">
+      <option value="age" ${field==='age'?'selected':''}>Age</option>
+      <option value="score" ${field==='score'?'selected':''}>Risk Score</option>
+      <option value="disease" ${field==='disease'?'selected':''}>Has Disease</option>
+    </select>
+    <select class="select cond-op">
+      <option value="GT" ${op==='GT'?'selected':''}>></option>
+      <option value="GTE" ${op==='GTE'?'selected':''}>≥</option>
+      <option value="LT" ${op==='LT'?'selected':''}>&#60;</option>
+      <option value="LTE" ${op==='LTE'?'selected':''}>≤</option>
+      <option value="EQ" ${op==='EQ'?'selected':''}>= </option>
+    </select>
+    <input class="input cond-value" type="text" value="${value}" placeholder="value">
+    <button class="btn-ghost" onclick="this.parentElement.remove()">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>`;
+  document.getElementById('condRows').appendChild(row);
+}
+
+async function saveRule() {
+  const id = document.getElementById('rEditId').value;
+  const condRules = [...document.querySelectorAll('#condRows .cond-row')].map(row => ({
+    field: row.querySelector('.cond-field').value,
+    op:    row.querySelector('.cond-op').value,
+    value: isNaN(row.querySelector('.cond-value').value) ? row.querySelector('.cond-value').value : Number(row.querySelector('.cond-value').value),
+  }));
+  const body = {
+    name: document.getElementById('rName').value.trim(),
+    priority: Number(document.getElementById('rPriority').value),
+    conditions: { combinator: document.getElementById('rCombinator').value, rules: condRules },
+    action: document.getElementById('rAction').value,
+  };
+  if (!body.name || !condRules.length) { toast('Name and at least one condition required', 'error'); return; }
+  const r = await apiFetch(id ? `/admin/rules/${id}` : '/admin/rules', { method: id ? 'PUT' : 'POST', body });
+  if (r.success) { toast('Rule saved', 'success'); closeModal('ruleModal'); load(); }
+  else toast(r.error || 'Error', 'error');
+}
+
+async function toggleRule(id, active) {
+  await apiFetch(`/admin/rules/${id}/status`, { method: 'PATCH', body: { isActive: active } });
+  toast(active ? 'Rule activated' : 'Rule deactivated', 'info');
+  load();
+}
+
+async function deleteRule(id, name) {
+  if (!confirm(`Delete rule "${name}"?`)) return;
+  const r = await apiFetch(`/admin/rules/${id}`, { method: 'DELETE' });
+  if (r.success) { toast('Rule deleted', 'success'); load(); }
+}
+
+function openTest() { document.getElementById('testResult').innerHTML = ''; openModal('testModal'); }
+
+async function runTest() {
+  const profile = {
+    personalDetails: { age: Number(document.getElementById('tAge').value) },
+    disclosures: document.getElementById('tDisease').value === 'true' ? ['d1'] : [],
+    lifestyle: {},
+  };
+  const score = Number(document.getElementById('tScore').value) || 0;
+  // Simulate locally
+  let decision = null, triggered = null;
+  for (const rule of rules.filter(r => r.isActive).sort((a,b)=>(a.priority||99)-(b.priority||99))) {
+    if (!rule.conditions?.rules?.length) continue;
+    const check = c => {
+      let actual = c.field === 'age' ? profile.personalDetails.age : c.field === 'score' ? score : profile.disclosures.length > 0;
+      if (c.op === 'GT') return actual > c.value;
+      if (c.op === 'GTE') return actual >= c.value;
+      if (c.op === 'LT') return actual < c.value;
+      if (c.op === 'LTE') return actual <= c.value;
+      if (c.op === 'EQ') return actual == c.value;
+      return false;
+    };
+    const match = rule.conditions.combinator === 'and' ? rule.conditions.rules.every(check) : rule.conditions.rules.some(check);
+    if (match) { decision = rule.action; triggered = rule.name; break; }
+  }
+  const resultEl = document.getElementById('testResult');
+  if (decision) {
+    resultEl.innerHTML = `<div class="test-result alert-success" style="background:#dcfce7;border:1px solid #86efac;border-radius:6px"><strong>Rule matched:</strong> "${triggered}"<br>Decision: <strong>${decision.replace('_',' ')}</strong></div>`;
+  } else {
+    resultEl.innerHTML = `<div class="test-result alert-info" style="background:#e0f2fe;border:1px solid #bae6fd;border-radius:6px">No rules matched. Decision Matrix will apply to score <strong>${score}</strong>.</div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

@@ -11,11 +11,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'daman-uw-secret-2024';
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
-// Serve static portals — __dirname is admin-portal/api/, so .. is admin-portal/
-app.use('/admin',    express.static(path.join(__dirname, '..')));
-app.use('/customer', express.static(path.join(__dirname, '..', 'customer-portal')));
-app.use('/public',   express.static(path.join(__dirname, '..', 'public')));
-// Serve logo at root so both portals can use /daman-logo.png
+// Static files are served by Vercel's filesystem routing (see vercel.json)
+// Only serve logo and root redirect here as fallback
 app.get('/daman-logo.png', (req, res) => {
   res.setHeader('Content-Type', 'image/webp');
   res.sendFile(path.join(__dirname, '..', 'public', 'daman-logo.webp'));

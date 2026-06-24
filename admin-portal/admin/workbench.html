@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UW Workbench — Daman UW</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/css/style.css">
+<style>
+.wb-layout{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start;min-height:calc(100vh - 160px)}
+.case-queue{display:flex;flex-direction:column;gap:8px}
+.case-card{padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);cursor:pointer;transition:all .12s}
+.case-card:hover{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-light)}
+.case-card.selected{border-color:var(--primary);background:var(--primary-light)}
+.case-name{font-weight:600;font-size:13px}
+.case-ref{font-size:11px;color:var(--text-muted);font-family:monospace;margin-top:2px}
+.case-score{font-size:11px;margin-top:6px;color:var(--text-muted)}
+.case-score strong{color:var(--danger)}
+.detail-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow)}
+.section-heading{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.disease-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--danger-bg);color:var(--danger);border:1px solid #fca5a5;border-radius:8px;font-size:12px;font-weight:600;margin:3px}
+.decision-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.decision-btn{padding:12px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;font-weight:600;text-align:center;background:var(--surface);transition:all .12s;font-family:inherit}
+.decision-btn:hover,.decision-btn.selected{border-width:2px}
+.decision-btn.ACCEPT.selected{border-color:var(--success);background:var(--success-bg);color:var(--success)}
+.decision-btn.ACCEPT_WITH_LOADING.selected{border-color:var(--info);background:var(--info-bg);color:var(--info)}
+.decision-btn.REFER.selected{border-color:var(--warning);background:var(--warning-bg);color:var(--warning)}
+.decision-btn.DECLINE.selected{border-color:var(--danger);background:var(--danger-bg);color:var(--danger)}
+.decided-banner{padding:16px;border-radius:var(--radius);margin-top:16px}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Underwriter Workbench</div>
+          <div class="page-subtitle">Manual review queue for referred cases</div>
+        </div>
+        <button class="btn btn-secondary" onclick="load()">Refresh</button>
+      </div>
+      <div class="wb-layout">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Referred Cases</span><span class="badge badge-referred" id="queueCount">0</span></div>
+          <div class="card-body" style="padding:12px">
+            <div class="case-queue" id="caseQueue"><div class="text-muted text-sm">Loading…</div></div>
+          </div>
+        </div>
+        <div id="caseDetail"><div class="empty" style="padding:60px 24px"><p>Select a case</p><small>Choose a referred case from the queue to review it.</small></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+<script src="/admin/js/api.js"></script>
+<script src="/admin/js/layout.js"></script>
+<script>
+if (!requireAuth()) throw '';
+renderLayout('UW Workbench');
+
+let cases = [], diseases = [], selectedId = null, selectedDecision = null;
+
+async function load() {
+  const [cr, dr] = await Promise.all([apiFetch('/admin/workbench'), apiFetch('/admin/diseases')]);
+  cases = cr.data || [];
+  diseases = dr.data || [];
+  document.getElementById('queueCount').textContent = cases.length;
+  renderQueue();
+}
+
+function renderQueue() {
+  const el = document.getElementById('caseQueue');
+  if (!cases.length) { el.innerHTML = '<div class="empty" style="padding:24px"><p>No referred cases</p><small>All caught up!</small></div>'; return; }
+  el.innerHTML = cases.map(c => `
+    <div class="case-card ${c.id === selectedId ? 'selected' : ''}" onclick="selectCase('${c.id}')">
+      <div class="case-name">${c.personalDetails?.fullName || 'Unknown'}</div>
+      <div class="case-ref">${c.referenceNumber}</div>
+      <div class="case-score">Risk Score: <strong>${c.riskScore ?? '—'}</strong> · ${formatDate(c.submittedAt)}</div>
+    </div>`).join('');
+}
+
+async function selectCase(id) {
+  selectedId = id; selectedDecision = null;
+  renderQueue();
+  const r = await apiFetch(`/admin/workbench/${id}`);
+  const a = r.data;
+  const dNames = (a.diseasesDetail || []).map(d => d.name);
+  const pd = a.personalDetails || {};
+  const already = a.workbenchDecision;
+
+  document.getElementById('caseDetail').innerHTML = `
+    <div class="detail-card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div style="font-size:17px;font-weight:700">${pd.fullName || '—'}</div>
+          <div class="text-muted text-sm">${a.referenceNumber} · Submitted ${formatDate(a.submittedAt)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:28px;font-weight:800;color:var(--danger)">${a.riskScore ?? '—'}</div>
+          <div class="text-muted text-sm">Risk Score</div>
+        </div>
+      </div>
+
+      <div class="section-heading">Applicant Summary</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:13px">
+        ${summaryKV('Age', pd.age)} ${summaryKV('Gender', pd.gender)} ${summaryKV('Nationality', pd.nationality)}
+        ${summaryKV('Smoking', (a.lifestyle||{}).smoking)} ${summaryKV('BMI', (a.lifestyle||{}).bmi?.toFixed(1))}
+      </div>
+
+      <div class="section-heading">Disclosed Medical Conditions</div>
+      <div>${dNames.length ? dNames.map(n => `<span class="disease-pill">${n}</span>`).join('') : '<span class="text-muted text-sm">None</span>'}</div>
+
+      <div class="section-heading">Documents</div>
+      <div>${(a.documents||[]).length ? a.documents.map(d => `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;display:flex;align-items:center;gap:8px"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${d.fileName}</div>`).join('') : '<span class="text-muted text-sm">No documents</span>'}</div>
+
+      ${already ? `
+        <div class="decided-banner" style="background:var(--success-bg);border:1px solid #86efac;border-radius:8px;margin-top:16px">
+          <strong>Decision already recorded</strong><br>
+          ${badge(already.decision)} by <strong>${already.decidedBy}</strong> on ${formatDateTime(already.decidedAt)}<br>
+          <em style="font-size:13px;color:var(--text-muted)">"${already.notes}"</em>
+        </div>` : `
+        <div class="section-heading">Record Decision</div>
+        <div class="decision-actions">
+          ${['ACCEPT','ACCEPT_WITH_LOADING','REFER','DECLINE'].map(d => `
+            <button class="decision-btn ${d}" id="dbtn-${d}" onclick="pickDecision('${d}')">${d.replace(/_/g,' ')}</button>`).join('')}
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label>Justification / Notes <span class="required">*</span></label>
+          <textarea class="textarea" id="uwNotes" placeholder="Enter detailed reasoning for this decision…" rows="3"></textarea>
+        </div>
+        <button class="btn btn-primary w-full" style="margin-top:4px" onclick="submitDecision('${a.id}')">Submit Decision</button>`}
+    </div>`;
+}
+
+function summaryKV(label, val) {
+  return `<div style="background:var(--bg);padding:8px 10px;border-radius:var(--radius)"><div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px">${label}</div><div style="font-weight:600">${val || '—'}</div></div>`;
+}
+
+function pickDecision(d) {
+  selectedDecision = d;
+  ['ACCEPT','ACCEPT_WITH_LOADING','REFER','DECLINE'].forEach(x => document.getElementById('dbtn-'+x)?.classList.remove('selected'));
+  document.getElementById('dbtn-'+d)?.classList.add('selected');
+}
+
+async function submitDecision(id) {
+  if (!selectedDecision) { toast('Select a decision first', 'error'); return; }
+  const notes = document.getElementById('uwNotes')?.value?.trim();
+  if (!notes || notes.length < 5) { toast('Notes must be at least 5 characters', 'error'); return; }
+  const r = await apiFetch(`/admin/workbench/${id}/decision`, { method: 'POST', body: { decision: selectedDecision, notes } });
+  if (r.success) {
+    toast('Decision recorded', 'success');
+    await load();
+    const stillExists = cases.find(c => c.id === id);
+    if (!stillExists) { selectedId = null; document.getElementById('caseDetail').innerHTML = `<div class="empty" style="padding:60px 24px"><p>Case resolved</p><small>Select another case from the queue.</small></div>`; }
+  } else toast(r.error || 'Error', 'error');
+}
+
+load();
+</script>
+</body>
+</html>
