@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Application Submitted — Daman Health</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/customer/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-logo">
+    <img src="/public/daman-logo.webp" alt="Daman Health" style="height:36px;width:auto;object-fit:contain">
+    <div class="logo-text">Daman Health<span>Underwriting Application</span></div>
+  </div>
+</header>
+
+<div class="confirm-wrap">
+  <div class="confirm-icon">
+    <svg width="36" height="36" fill="none" stroke="#16a34a" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <h1 style="font-size:26px;font-weight:800;margin-bottom:8px">Application Submitted!</h1>
+  <p style="color:var(--text-muted);font-size:15px;line-height:1.7">Thank you for completing your underwriting application. Your case has been reviewed by our automated underwriting system.</p>
+
+  <div class="ref-box">
+    <div class="ref-label">Application Reference</div>
+    <div class="ref-number" id="refNumber">—</div>
+  </div>
+
+  <div id="decisionBlock" style="margin-bottom:24px"></div>
+
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:left;margin-bottom:28px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:12px">What happens next?</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:12px;font-size:13px">
+        <span style="font-size:16px">📧</span>
+        <span>A confirmation email will be sent to the email address you provided.</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:13px">
+        <span style="font-size:16px">📋</span>
+        <span>If your case was referred for manual review, an underwriter will contact you within 2–5 business days.</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:13px">
+        <span style="font-size:16px">📎</span>
+        <span>Keep your reference number safe for any future correspondence.</span>
+      </div>
+    </div>
+  </div>
+
+  <a href="/customer/index.html" class="btn btn-primary" style="width:100%;justify-content:center;font-size:15px;padding:13px">
+    Start a New Application
+  </a>
+</div>
+
+<script>
+const result = JSON.parse(sessionStorage.getItem('appResult') || '{}');
+sessionStorage.removeItem('appId');
+sessionStorage.removeItem('appResult');
+
+document.getElementById('refNumber').textContent = result.referenceNumber || '—';
+
+const decisionMap = {
+  ACCEPT: { color: '#16a34a', bg: '#dcfce7', border: '#86efac', label: 'Accepted', msg: 'Your application has been accepted. You are eligible for coverage.' },
+  ACCEPT_WITH_LOADING: { color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc', label: 'Accepted with Loading', msg: 'Your application has been accepted with a premium loading. A Daman representative will be in touch with details.' },
+  REFER: { color: '#d97706', bg: '#fef9c3', border: '#fde68a', label: 'Referred for Review', msg: 'Your case has been referred for manual underwriter review. You will hear from us within 2–5 business days.' },
+  DECLINE: { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', label: 'Not Approved', msg: 'Unfortunately, your application has not been approved at this time. You may contact us for more information.' },
+};
+
+const d = decisionMap[result.decision];
+if (d) {
+  document.getElementById('decisionBlock').innerHTML = `
+    <div style="padding:18px 20px;background:${d.bg};border:1.5px solid ${d.border};border-radius:12px;text-align:left">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${d.color};margin-bottom:6px">Underwriting Decision</div>
+      <div style="font-size:18px;font-weight:800;color:${d.color};margin-bottom:6px">${d.label}</div>
+      <div style="font-size:13px;color:${d.color};opacity:.85">${d.msg}</div>
+      ${result.riskScore !== undefined ? `<div style="margin-top:10px;font-size:12px;color:${d.color};opacity:.7">Risk Score: <strong>${result.riskScore}</strong></div>` : ''}
+    </div>`;
+}
+</script>
+</body>
+</html>

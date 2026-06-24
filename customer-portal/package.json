@@ -1,0 +1,13 @@
+{
+  "name": "daman-customer-portal",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.0",
+    "jsonwebtoken": "^9.0.0",
+    "uuid": "^9.0.0"
+  }
+}
