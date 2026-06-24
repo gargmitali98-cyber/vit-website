@@ -1556,8 +1556,8 @@ async function init() {
       const app = data.data;
       if (app.personalDetails && app.personalDetails.firstName) { appData.personalDetails = app.personalDetails; completed.add('personal'); }
       if (app.lifestyle && app.lifestyle.smokingStatus) { appData.lifestyle = app.lifestyle; completed.add('lifestyle'); }
-      if (app.familyHistory) { appData.familyHistory = app.familyHistory; Object.assign(appData, app.familyHistory); completed.add('family'); }
-      if (app.claimsHistory) { appData.claimsHistory = app.claimsHistory; completed.add('claims'); }
+      if (app.familyHistory && Object.keys(app.familyHistory).length) { appData.familyHistory = app.familyHistory; Object.assign(appData, app.familyHistory); completed.add('family'); }
+      if (app.claimsHistory && Object.keys(app.claimsHistory).length) { appData.claimsHistory = app.claimsHistory; completed.add('claims'); }
       if (app.disclosures && typeof app.disclosures === 'object' && !Array.isArray(app.disclosures) && app.disclosures.inGoodHealth !== undefined) {
         appData.disclosures = app.disclosures; Object.assign(appData, app.disclosures); completed.add('disclosure');
         // Good health = yes path skips conditions — restore that skip
